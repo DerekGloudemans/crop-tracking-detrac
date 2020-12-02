@@ -26,7 +26,7 @@ import _pickle as pickle
 # filter and frame loader
 from util_track.mp_loader import FrameLoader
 from util_track.kf import Torch_KF
-
+from util_track.mp_writer import OutputWriter
 
 
 
@@ -46,6 +46,7 @@ class Localization_Tracker():
                  det_conf_cutoff = 0.5,
                  ber = 2.0,
                  PLOT = True,
+                 OUTVID = None,
                  wer = 1.25,
                  skip_step = 1):
         """
@@ -107,7 +108,12 @@ class Localization_Tracker():
         self.filter = Torch_KF(torch.device("cpu"),INIT = kf_params)
        
         self.loader = FrameLoader(track_dir,self.device,det_step,init_frames)
-        self.track_id = int(track_dir.split("MVI_")[-1])
+        #self.track_id = int(track_dir.split("MVI_")[-1])
+        
+        if OUTVID is not None:
+            self.writer = OutputWriter(OUTVID)
+        else:
+            self.writer = None
         
         time.sleep(5)
         self.n_frames = len(self.loader)
@@ -462,9 +468,8 @@ class Localization_Tracker():
         cv2.imshow("window",im)
         cv2.waitKey(1)
         
-        # write output image in temp output folder if frame number is specified
-        if frame is not None:
-            cv2.imwrite("output/{}.png".format(str(frame).zfill(4)),im*255)
+        if self.writer is not None:
+            self.writer(im)
 
     def parse_detections(self,scores,labels,boxes):
         """
@@ -641,7 +646,7 @@ class Localization_Tracker():
                 try: # use CNN detector
                     start = time.time()
                     with torch.no_grad():                       
-                        scores,labels,boxes = self.detector(frame.unsqueeze(0))
+                        scores,labels,boxes = self.detector(frame.unsqueeze(0))            
                         torch.cuda.synchronize(self.device)
                     self.time_metrics['detect'] += time.time() - start
                     

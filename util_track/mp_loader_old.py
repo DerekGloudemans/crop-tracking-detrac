@@ -40,56 +40,31 @@ class FrameLoader():
             If not None, only this many frames are loaded into memory. The default is None.
     
         """
-        try:
-            files = []
-            for item in [os.path.join(track_directory,im) for im in os.listdir(track_directory)]:
-                files.append(item)
-                files.sort()    
         
-            self.files = files
-            
-            manager = mp.Manager()
-            self.det_step = manager.Value("i",det_step)
-            
-            #self.det_step = det_step
-            self.init_frames = init_frames
-            self.device = device
+        files = []
+        for item in [os.path.join(track_directory,im) for im in os.listdir(track_directory)]:
+            files.append(item)
+            files.sort()    
         
-            # create shared queue
-            #mp.set_start_method('spawn')
-            ctx = mp.get_context('spawn')
-            self.queue = ctx.Queue()
-            
-            self.frame_idx = -1
-            
-            self.worker = ctx.Process(target=load_to_queue, args=(self.queue,files,self.det_step,init_frames,device,buffer_size,))
-            self.worker.start()
-            time.sleep(5)
+        self.files = files
         
-        except: # file is a video
-            sequence = track_directory
-            
-            self.sequence = sequence
+        manager = mp.Manager()
+        self.det_step = manager.Value("i",det_step)
         
-            manager = mp.Manager()
-            self.det_step = manager.Value("i",det_step)
-            
-            #self.det_step = det_step
-            self.init_frames = init_frames
-            self.device = device
+        #self.det_step = det_step
+        self.init_frames = init_frames
+        self.device = device
+    
+        # create shared queue
+        #mp.set_start_method('spawn')
+        ctx = mp.get_context('spawn')
+        self.queue = ctx.Queue()
         
-            # create shared queue
-            #mp.set_start_method('spawn')
-            ctx = mp.get_context('spawn')
-            self.queue = ctx.Queue()
-            
-            self.frame_idx = -1
-            
-            self.len = 30*5*60
-            
-            self.worker = ctx.Process(target=load_to_queue_video, args=(self.queue,sequence,device,buffer_size,))
-            self.worker.start()
-            time.sleep(5)
+        self.frame_idx = -1
+        
+        self.worker = ctx.Process(target=load_to_queue, args=(self.queue,files,self.det_step,init_frames,device,buffer_size,))
+        self.worker.start()
+        time.sleep(5)
         
     def __len__(self):
         """
@@ -97,10 +72,8 @@ class FrameLoader():
         -----------
         Returns number of frames in the track directory
         """
-        try:
-            return self.len
-        except:   
-            return len(self.files)
+        
+        return len(self.files)
     
     def __next__(self):
         """
@@ -120,7 +93,7 @@ class FrameLoader():
         
         if self.frame_idx < len(self) -1:
         
-            frame = self.queue.get(timeout = 10)
+            frame = self.queue.get(timeout = 3)
             self.frame_idx = frame[0]
             frame = frame[1:]
             return self.frame_idx, frame
@@ -170,17 +143,17 @@ def load_to_queue(image_queue,files,det_step,init_frames,device,queue_size):
               #     original_im = im[:,:,[2,1,0]].copy()
               #     # new stuff
               #     dim = (im.shape[1], im.shape[0])
-              #     im = cv2.resize(im, (1920,1080))
+              #     im = cv2.resize(im, (1024,1024))
               #     im = im.transpose((2,0,1)).copy()
               #     im = torch.from_numpy(im).float().div(255.0).unsqueeze(0)
               #     dim = torch.FloatTensor(dim).repeat(1,2)
               #     dim = dim.to(device,non_blocking = True)
               # else:
-                  # keep as tensor
+                # keep as tensor
               original_im = np.array(im)[:,:,[2,1,0]].copy()
               im = F.to_tensor(im)
               im = F.normalize(im,mean=[0.485, 0.456, 0.406],
-                                std=[0.229, 0.224, 0.225])
+                                    std=[0.229, 0.224, 0.225])
               dim = None
                  
               # store preprocessed image, dimensions and original image
@@ -199,45 +172,7 @@ def load_to_queue(image_queue,files,det_step,init_frames,device,queue_size):
     while True:  
            time.sleep(5)
         
-def load_to_queue_video(image_queue,sequence,device,queue_size):
-    
-    cap = cv2.VideoCapture(sequence)
-    
-    frame_idx = 0    
-    while frame_idx < 30*5*60:
         
-        if image_queue.qsize() < queue_size:
-            
-            
-            
-            # load next image from videocapture object
-            ret,original_im = cap.read()
-            if ret == False:
-                frame = (-1,None,None,None)
-                image_queue.put(frame)       
-                break
-            else:
-                original_im = cv2.resize(original_im,(1920,1080))
-                im = F.to_tensor(original_im)
-                im = F.normalize(im,mean=[0.485, 0.456, 0.406],
-                                          std=[0.229, 0.224, 0.225])
-                # store preprocessed image, dimensions and original image
-                im = im.to(device)
-                dim = None
-                frame = (frame_idx,im,dim,original_im)
-             
-                # append to queue
-                image_queue.put(frame)       
-                frame_idx += 1
-    
-    # neverending loop, because if the process ends, the tensors originally
-    # initialized in this function will be deleted, causing issues. Thus, this 
-    # function runs until a call to self.next() returns -1, indicating end of track 
-    # has been reached
-    while True:  
-           time.sleep(5)
-    
-    
         
 if __name__ == "__main__":
     

@@ -34,13 +34,14 @@ if __name__ == "__main__":
     
      # parameters
      iou_cutoff = 0.75       # tracklets overlapping by this amount will be pruned
-     det_step = 9            # frames between full detection steps
+     det_step = 3            # frames between full detection steps
      skip_step = 1           # frames between update steps (either detection or localization)
      ber = 2.4               # amount by which to expand a priori tracklet to crop object
      init_frames = 1         # number of detection steps in a row to perform
      matching_cutoff = 100   # detections farther from tracklets than this will not be matched 
-     SHOW = False             # show tracking in progress?
-     LOCALIZE = True         # if False, will skip frames between detection steps
+     SHOW = True             # show tracking in progress?
+     LOCALIZE = False        # if False, will skip frames between detection steps
+     OUTVID = os.path.join(os.getcwd(),"demo","example_outputs")
     
      # enable CUDA
      use_cuda = torch.cuda.is_available()
@@ -65,7 +66,8 @@ if __name__ == "__main__":
      # load filter
      filter_params = os.path.join(os.getcwd(),"config","filter_params_tuned.cpkl")
      
-     
+     if not LOCALIZE:
+         localizer = None
 
      with open(filter_params ,"rb") as f:
                  kf_params = pickle.load(f)
@@ -74,11 +76,14 @@ if __name__ == "__main__":
                  kf_params["R2"] /= 50 
                                          
      # get all sequences
-     for sequence in os.listdir(track_dir)[1:]:
-        sequence = os.path.join(track_dir,sequence)
+     for sequence in os.listdir(track_dir):
+        if sequence == "example_outputs" or ".cpkl" in sequence:
+            continue
+        
+        sequence_path = os.path.join(track_dir,sequence)
         
         # track it!
-        tracker = Localization_Tracker(sequence,
+        tracker = Localization_Tracker(sequence_path,
                                        detector,
                                        localizer,
                                        kf_params,
@@ -92,6 +97,7 @@ if __name__ == "__main__":
                                        iou_cutoff = iou_cutoff,
                                        ber = ber,
                                        PLOT = SHOW,
+                                       OUTVID = OUTVID,
                                        wer = 1.25)
         
         tracker.track()
