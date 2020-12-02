@@ -1,1 +1,1 @@
-temporary-repo
+new-repo

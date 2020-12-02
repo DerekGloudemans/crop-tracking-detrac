@@ -1,0 +1,8 @@
+
+*.pt
+
+demo/
+
+util_eval/__pycache__/
+
+*.pth
