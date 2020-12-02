@@ -1,10 +1,10 @@
-#Localization-based Tracking 
+# Localization-based Tracking 
 
 I'm going to keep this repo light on identifying details for now to maintain due to double-blind submissions in progress. Check back later for more details!
 
 This repository implements a fast tracking approach based primarily on localization rather than detection. Results, when published, are extremely promising in terms of pushing real-time trackign without extensive implementation engineering.
 
-##Included Files:
+## Included Files:
 - config/ - contains configuration file for Kalman filter. If you want to use the pretrained localizer and detector weights from training on UA Detrac, save them in this folder.
 - demo/ - currently empty, you can save track sequences (as series of numerically labeled frames) here and the demo will then track them.
 - util_detrac/ - contains pytorch datasets for loading UA Detrac data for a variety of CV tasks, such as localization, tracking , object detection.
@@ -16,10 +16,10 @@ This repository implements a fast tracking approach based primarily on localizat
 - train_localizer.py - trains a retinanet localizer on the UA Detrac datset.
 - tune_kf_params.py - tunes the model and measurement error covariances for the kalman filter to improve tracking performance.
 
-##Acknowledgements:
+## Acknowledgements:
 I broke the submodule functionality of this repo so I don't technically include these repos as submodules, but I used them in the code.
 - pymot-metrics - for evaluation of multiple object tracking outputs according to various well-established metrics: https://github.com/cheind/py-motmetrics 
 - pytorch-retinanet - for detection and localization network architectures: https://github.com/yhenon/pytorch-retinanet
 
-##Older Code versions:
+## Older Code versions:
 This code was ported for simplicity from https://github.com/DerekGloudemans-oldcode/tracking-by-localization. This repository includes a ton of files used during code development, with various localizer formulations, different state formulations, and a bunch of other doodads. If you're interested in a specific functionality that this repo doesn't contain, check that code as it may well contain the function. Fair warning, it is not extensively commented. Feel free to message for more details.
