@@ -2,7 +2,7 @@
 
 I'm going to keep this repo light on identifying details for now to maintain due to double-blind submissions in progress. Check back later for more details!
 
-This repository implements a fast tracking approach based primarily on localization rather than detection. Results, when published, are extremely promising in terms of pushing real-time trackign without extensive implementation engineering.
+This repository implements a fast integrated approach to object detection and tracking based primarily on localization rather than detection. Results, when published, are extremely promising in terms of pushing real-time trackign without extensive implementation engineering.
 
 ## Included Files:
 - config/ - contains configuration file for Kalman filter. If you want to use the pretrained localizer and detector weights from training on UA Detrac, save them in this folder.
