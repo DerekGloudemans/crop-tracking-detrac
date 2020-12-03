@@ -27,6 +27,14 @@ from models.pytorch_retinanet_localizer.retinanet.model import resnet34
 
 from util_detrac.detrac_detection_dataset import class_dict
 
+
+
+
+
+
+
+
+
 if __name__ == "__main__":
 
      # input directory
@@ -42,6 +50,8 @@ if __name__ == "__main__":
      SHOW = True             # show tracking in progress?
      LOCALIZE = False        # if False, will skip frames between detection steps
      OUTVID = os.path.join(os.getcwd(),"demo","example_outputs")
+    
+    ###########################################################################
     
      # enable CUDA
      use_cuda = torch.cuda.is_available()

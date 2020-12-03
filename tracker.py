@@ -46,7 +46,7 @@ class Localization_Tracker():
                  det_conf_cutoff = 0.5,
                  ber = 2.0,
                  PLOT = True,
-                 OUTVID = None,
+                 OUT = None,
                  wer = 1.25,
                  skip_step = 1):
         """
@@ -110,8 +110,9 @@ class Localization_Tracker():
         self.loader = FrameLoader(track_dir,self.device,det_step,init_frames)
         #self.track_id = int(track_dir.split("MVI_")[-1])
         
-        if OUTVID is not None:
-            self.writer = OutputWriter(OUTVID)
+        # create output image writer
+        if OUT is not None:
+            self.writer = OutputWriter(OUT)
         else:
             self.writer = None
         
@@ -213,6 +214,7 @@ class Localization_Tracker():
     
     def crop_tracklets(self,pre_locations,frame):
         """
+        Crops relevant areas from frame based on a priori (pre_locations) object locations
         """
         start = time.time()
         box_ids = []
@@ -779,7 +781,13 @@ class Localization_Tracker():
         cv2.destroyAllWindows()
         
     def get_results(self):
-        
+        """
+        Call after calling track to summarize results
+        Returns:
+            final_output - list of object tracklet locations per frame
+            framerate - calculated fps
+            time_metrics - time spent on each operation
+        """
         if len(self.all_tracks) == 0:
             print("Must call track() before getting results")
             return None

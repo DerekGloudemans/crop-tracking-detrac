@@ -44,11 +44,12 @@ from util_track.kf import Torch_KF
 from models.pytorch_retinanet_detector.retinanet.model import resnet50 
 from models.pytorch_retinanet_localizer.retinanet.model import resnet34
 
-
-
-
 plt.style.use("seaborn")
 random.seed  = 0
+
+
+
+
 
 def test_outputs(bboxes,crops):
     """
@@ -92,6 +93,38 @@ def test_outputs(bboxes,crops):
         plt.pause(1)
         
         
+# def iou(a,b):
+#     """
+#     Description
+#     -----------
+#     Calculates intersection over union for all sets of boxes in a and b
+
+#     Parameters
+#     ----------
+#     a : a torch of size [batch_size,4] of bounding boxes in xysr formulation
+#     b : a torch of size [batch_size,4] of bounding boxes in xysr formulation
+
+#     Returns
+#     -------
+#     mean_iou - float between [0,1] with average iou for a and b
+#     """
+
+#     area_a = a[:,2] * a[:,2] * a[:,3]
+#     area_b = b[:,2] * b[:,2] * b[:,3]
+    
+#     minx = torch.max(a[:,0]-a[:,2]/2, b[:,0]-b[:,2]/2)
+#     maxx = torch.min(a[:,0]+a[:,2]/2, b[:,0]+b[:,2]/2)
+#     miny = torch.max(a[:,1]-a[:,2]*a[:,3]/2, b[:,1]-b[:,2]*b[:,3]/2)
+#     maxy = torch.min(a[:,1]+a[:,2]*a[:,3]/2, b[:,1]+b[:,2]*b[:,3]/2)
+#     zeros = torch.zeros(minx.shape,dtype=float)
+    
+#     intersection = torch.max(zeros, maxx-minx) * torch.max(zeros,maxy-miny)
+#     union = area_a + area_b - intersection
+#     iou = torch.div(intersection,union)
+#     mean_iou = torch.mean(iou)
+    
+#     return mean_iou
+
 def iou(a,b):
     """
     Description
@@ -100,21 +133,21 @@ def iou(a,b):
 
     Parameters
     ----------
-    a : a torch of size [batch_size,4] of bounding boxes.
-    b : a torch of size [batch_size,4] of bounding boxes.
+    a : a torch of size [batch_size,4] of bounding boxes in xyxy formulation
+    b : a torch of size [batch_size,4] of bounding boxes in xyxy formulation
 
     Returns
     -------
     mean_iou - float between [0,1] with average iou for a and b
     """
 
-    area_a = a[:,2] * a[:,2] * a[:,3]
-    area_b = b[:,2] * b[:,2] * b[:,3]
+    area_a = (a[:,2]-a[:,0]) * (a[:,3] - a[:,1])
+    area_b = (b[:,2]-b[:,0]) * (b[:,3] - b[:,1])
     
-    minx = torch.max(a[:,0]-a[:,2]/2, b[:,0]-b[:,2]/2)
-    maxx = torch.min(a[:,0]+a[:,2]/2, b[:,0]+b[:,2]/2)
-    miny = torch.max(a[:,1]-a[:,2]*a[:,3]/2, b[:,1]-b[:,2]*b[:,3]/2)
-    maxy = torch.min(a[:,1]+a[:,2]*a[:,3]/2, b[:,1]+b[:,2]*b[:,3]/2)
+    minx = torch.max(a[:,0], b[:,0])
+    maxx = torch.min(a[:,2], b[:,2])
+    miny = torch.max(a[:,1], b[:,1])
+    maxy = torch.min(a[:,3], b[:,3])
     zeros = torch.zeros(minx.shape,dtype=float)
     
     intersection = torch.max(zeros, maxx-minx) * torch.max(zeros,maxy-miny)
@@ -153,8 +186,12 @@ def plot_states(ap_states,
                 gts,
                 save_num = None
                 ):
+    """
+    Plots filter rollouts, called by filter_rollouts() function
+    """
+
     
-   
+    
     
     #convert list into numpy array
     ap_states =   torch.stack(ap_states)
@@ -299,7 +336,22 @@ def fit_localizer_R(loader,
                     bers = [1.5],
                     skew_ratio = 1, 
                     save_file = "temp.cpkl",
+                    PLOT = False,
                     wer = 1.25):
+    """
+    Fits measurement error covariance matrix for KF
+    
+    Parameters
+    ----------
+    dataloader : generator that loads [batch_size,n_frames,state_size] tensors
+    kf_params : dictionary used to initialize 
+    device - Cuda device
+    n_iterations : (int) number of iterations for Q estimation, default is 20000
+    bers - list[float] -each item is considered as amount by which to expand a priori bounding box
+    skew_ratio - (float), amount by which to distort ground truth to use as a priori
+    state_size : (int) number of state variables to use, rest are truncated from incoming states
+    wer - (float) indow expansion ratio, depends on localizer training
+    """
     
     # save best across all ber values
     best_covariance = None
@@ -321,8 +373,7 @@ def fit_localizer_R(loader,
             b = batch.shape[0]
             
             # get starting error
-            degradation = np.array([2,2,4,0.01]) *skew_ratio # should roughly equal localizer error covariance
-            degradation = np.array([10,10,10,10])
+            degradation = np.array([10,10,10,10])* skew_ratio
             skew = np.random.normal(0,degradation,(len(batch),4))
             gt_skew = gt + skew
             skewed_iou.append(iou(gt_skew,gt))
@@ -433,12 +484,12 @@ def fit_localizer_R(loader,
                 
                 # use original bboxes to weight best bboxes 
                 n_anchors = reg_boxes.shape[1]
-                a_priori = gt.clone()
-                gt_skew = gt.clone()                
-                a_priori[:,0] = (gt_skew[:,0] - gt_skew[:,2]/2.0)               - new_boxes[:,1]
-                a_priori[:,1] = (gt_skew[:,1] - gt_skew[:,2]*gt_skew[:,3]/2.0 ) - new_boxes[:,2]
-                a_priori[:,2] = (gt_skew[:,0] + gt_skew[:,2]/2.0 )              - new_boxes[:,1]
-                a_priori[:,3] = (gt_skew[:,1] + gt_skew[:,2]*gt_skew[:,3]/2.0 ) - new_boxes[:,2]
+                a_priori = gt_skew.clone()
+                # gt_skew = gt.clone()                
+                a_priori[:,0] -= new_boxes[:,1]
+                a_priori[:,1] -= new_boxes[:,2]
+                a_priori[:,2] -= new_boxes[:,1]
+                a_priori[:,3] -= new_boxes[:,2]
                 bs = torch.from_numpy(box_scales).unsqueeze(1).repeat(1,4)
                 a_priori = a_priori * 224/bs
                 a_priori = a_priori.unsqueeze(1).repeat(1,n_anchors,1)
@@ -452,10 +503,10 @@ def fit_localizer_R(loader,
                 # w_diff = torch.abs(a_priori[:,2] - a_priori[:,0] - (reg_boxes[:,2] - reg_boxes[:,0]) )
                 # h_diff = torch.abs(a_priori[:,3] - a_priori[:,1] - (reg_boxes[:,3] - reg_boxes[:,1]) )
                 
-                keep_num = 5
+                keep_num = 1
                 
                 # evaluate each box on conf
-                alpha = 0.6
+                alpha = 1
                 beta  = 0 
                 gamma = 0
                 delta = 1
@@ -481,7 +532,7 @@ def fit_localizer_R(loader,
                 # detections = detections.data.cpu()
                 
                 # plot outputs
-                if False and iteration % 100 == 0:
+                if PLOT and iteration % 100 == 0:
                     batch_size = 32
                     row_size = 8
                     fig, axs = plt.subplots((batch_size+row_size-1)//row_size, row_size, constrained_layout=True)
@@ -599,6 +650,15 @@ def fit_detector_R(loader,
                    detector,
                    save_file = "temp.cpkl",
                    n_iterations = 2000):
+    """
+    fits measurement error covariance matrix for detector for kalman filter
+    loader - pytorch detection dataset loader
+    device - pytorch Cuda device
+    detector - CNN-based object detector
+    save_file - name of file at which to save kf parameters
+    n_iterations (int)
+    """
+    
     errors = []
     ious = []
     
@@ -621,19 +681,6 @@ def fit_detector_R(loader,
             del scores,labels
             boxes = boxes.cpu()
             torch.cuda.empty_cache()
-            
-            # pred = torch.zeros(boxes.shape)
-            # pred[:,0] = (boxes[:,0] + boxes[:,2]) / 2.0
-            # pred[:,1] = (boxes[:,1] + boxes[:,3]) / 2.0
-            # pred[:,2] = boxes[:,2] - boxes[:,0] 
-            # pred[:,3] = (boxes[:,3] - boxes[:,1]) / (boxes[:,2] - boxes[:,0])
-            
-            # gtxysr = torch.zeros(gts.shape)
-            # gtxysr[:,0] = (gts[:,0] + gts[:,2]) / 2.0
-            # gtxysr[:,1] = (gts[:,1] + gts[:,3]) / 2.0
-            # gtxysr[:,2] = gts[:,2] - gts[:,0]
-            # gtxysr[:,3] = (gts[:,3] - gts[:,1]) / (gts[:,2] - gts[:,0])
-            # gts = gtxysr
             pred = boxes
             
             idxs = torch.zeros(len(gts)) # idx item 0 holds the pred index that best matches the 0th ground truth, etc.
@@ -693,10 +740,14 @@ def filter_rollouts(loader,
                     skew_ratio = 0,
                     PLOT = True,
                     speed_init = "none",
-                    state_size = 7,
+                    state_size = 8,
                     keep_nums = [1],
                     wer = 1.25
                     ):
+    
+     """
+     Simulates tracking by performing several predict measure update steps
+     """
     
      for keep_num in keep_nums:
          ap_errors = []
@@ -714,7 +765,7 @@ def filter_rollouts(loader,
          model_errors = []
          meas_errors = []
          
-         degradation = np.array([2,2,4,0.01]) *skew_ratio # should roughly equal localizer error covariance
+         degradation = np.array([10,10,10,10]) *skew_ratio # should roughly equal localizer error covariance
          
          for iteration in range(n_iterations):
              
@@ -889,10 +940,10 @@ def filter_rollouts(loader,
                     n_anchors = reg_boxes.shape[1]
                     a_priori = a_priori[:,:4]
                     gt_skew = a_priori.clone() #gt.clone()                
-                    a_priori[:,0] = (gt_skew[:,0] - gt_skew[:,2]/2.0)               - new_boxes[:,1]
-                    a_priori[:,1] = (gt_skew[:,1] - gt_skew[:,2]*gt_skew[:,3]/2.0 ) - new_boxes[:,2]
-                    a_priori[:,2] = (gt_skew[:,0] + gt_skew[:,2]/2.0 )              - new_boxes[:,1]
-                    a_priori[:,3] = (gt_skew[:,1] + gt_skew[:,2]*gt_skew[:,3]/2.0 ) - new_boxes[:,2]
+                    a_priori[:,0] = gt_skew[:,0] - new_boxes[:,1]
+                    a_priori[:,1] = gt_skew[:,1] - new_boxes[:,2]
+                    a_priori[:,2] = gt_skew[:,2] - new_boxes[:,1]
+                    a_priori[:,3] = gt_skew[:,3] - new_boxes[:,2]
                     bs = torch.from_numpy(box_scales).unsqueeze(1).repeat(1,4)
                     a_priori = a_priori * 224/bs
                     a_priori = a_priori.unsqueeze(1).repeat(1,n_anchors,1)
@@ -954,7 +1005,6 @@ def filter_rollouts(loader,
                  output[:,1] = (detections[:,1] + detections[:,3]) / 2.0
                  output[:,2] = (detections[:,2] - detections[:,0])
                  output[:,3] = (detections[:,3] - detections[:,1]) / output[:,2]
-                 pred = torch.from_numpy(output)
                  
                  pred = detections
                  
@@ -1058,7 +1108,7 @@ if __name__ == "__main__":
     
     fit_Q(loader,
           kf_params,
-          n_iterations = 20000,
+          n_iterations = 20,
           save_file = INIT,
           speed_init = "smooth",
           state_size = 8)    
@@ -1079,8 +1129,6 @@ if __name__ == "__main__":
     retinanet.eval()
     retinanet.training = False
     
-
-    
     
     vecs = fit_localizer_R(loader,
                     kf_params, 
@@ -1088,7 +1136,9 @@ if __name__ == "__main__":
                     retinanet,
                     bers = [2.4],
                     save_file = INIT,
-                    n_iterations = 200,
+                    n_iterations = 2,
+                    skew_ratio = 0,
+                    PLOT = True,
                     wer = 1.25)
         
     
@@ -1116,6 +1166,7 @@ if __name__ == "__main__":
                     skew_ratio = 0,
                     PLOT = True,
                     keep_nums = [1],
+                    speed_init = "smooth",
                     wer = 1.25)
 
 
@@ -1151,4 +1202,4 @@ if __name__ == "__main__":
                    device, 
                    retinanet,
                    save_file = INIT,
-                   n_iterations = 1000)
+                   n_iterations = 100)

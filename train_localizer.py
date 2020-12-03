@@ -142,11 +142,14 @@ def plot_anchors(dataset,retinanet):
     retinanet.module.freeze_bn()
 
 def eval_iou(dataset,retinanet):
+    """
+    Evaluates localizer output performance
+    """
     retinanet.training = False
     retinanet.eval()
 
     all_ious = []
-    for j in range(1000):
+    for j in range(100):
         idx = np.random.randint(0,len(dataset))
     
         im,label,meta = dataset[idx]
@@ -190,8 +193,8 @@ def iou(a,b):
 
     Parameters
     ----------
-    a : a torch of size [batch_size,4] of bounding boxes.
-    b : a torch of size [batch_size,4] of bounding boxes.
+    a : a torch of size [batch_size,4] of bounding boxes in xyxy formulation
+    b : a torch of size [batch_size,4] of bounding boxes in xyxy formulation
 
     Returns
     -------
@@ -199,14 +202,13 @@ def iou(a,b):
     """
     a = a.unsqueeze(0)
     b = b.unsqueeze(0)
+    area_a = (a[:,2]-a[:,0]) * (a[:,3] - a[:,1])
+    area_b = (b[:,2]-b[:,0]) * (b[:,3] - b[:,1])
     
-    area_a = a[:,2] * a[:,2] * a[:,3]
-    area_b = b[:,2] * b[:,2] * b[:,3]
-    
-    minx = torch.max(a[:,0]-a[:,2]/2, b[:,0]-b[:,2]/2)
-    maxx = torch.min(a[:,0]+a[:,2]/2, b[:,0]+b[:,2]/2)
-    miny = torch.max(a[:,1]-a[:,2]*a[:,3]/2, b[:,1]-b[:,2]*b[:,3]/2)
-    maxy = torch.min(a[:,1]+a[:,2]*a[:,3]/2, b[:,1]+b[:,2]*b[:,3]/2)
+    minx = torch.max(a[:,0], b[:,0])
+    maxx = torch.min(a[:,2], b[:,2])
+    miny = torch.max(a[:,1], b[:,1])
+    maxy = torch.min(a[:,3], b[:,3])
     zeros = torch.zeros(minx.shape,dtype=float)
     
     intersection = torch.max(zeros, maxx-minx) * torch.max(zeros,maxy-miny)
@@ -215,8 +217,12 @@ def iou(a,b):
     mean_iou = torch.mean(iou)
     
     return mean_iou
+    
 
 def to_cpu(retinanet,checkpoint):
+    """
+    Moves retinanet checkpoint from GPU to CPU
+    """
     try:
         if checkpoint_file is not None:
             retinanet = torch.load(checkpoint_file)
@@ -236,15 +242,16 @@ def to_cpu(retinanet,checkpoint):
     
     torch.save(ret,"cpu_{}".format(checkpoint))
 
+
 if __name__ == "__main__":
     
-
+    # define parameters
     depth = 34
     num_classes = 13
     patience = 0
     max_epochs = 50
     start_epoch = 0
-    checkpoint_file = None#"detrac_retinanet_localizer_epoch10.pt"
+    checkpoint_file = os.path.join(os.getcwd(),"config","localizer_state_dict.pt")
 
     # Paths to data here
     label_dir       = "/home/worklab/Desktop/detrac/DETRAC-Train-Annotations-XML-v3"
@@ -268,10 +275,11 @@ if __name__ == "__main__":
     else:
         raise ValueError('Unsupported model depth, must be one of 18, 34, 50, 101, 152')
 
+    # create dataloaders
     try:
         train_data
     except:
-        # get dataloaders - here defined for UA Detrac Dataset
+        # datasets here defined for UA Detrac Dataset
         train_data = LocMulti_Dataset(train_partition,label_dir)
         val_data = LocMulti_Dataset(val_partition,label_dir)
         
@@ -284,10 +292,16 @@ if __name__ == "__main__":
         trainloader = data.DataLoader(train_data,**params)
         testloader = data.DataLoader(val_data,**params)
 
-    use_cuda = torch.cuda.is_available()
-    device = torch.device("cuda:0" if use_cuda else "cpu")
+    # load checkpoint
+    try:
+        if checkpoint_file is not None:
+            retinanet.load_state_dict(torch.load(checkpoint_file))
+    except:
+        retinanet.load_state_dict(torch.load(checkpoint_file)["model_state_dict"])
 
     # CUDA
+    use_cuda = torch.cuda.is_available()
+    device = torch.device("cuda:0" if use_cuda else "cpu")
     if use_cuda:
         if torch.cuda.device_count() > 1:
             retinanet = torch.nn.DataParallel(retinanet,device_ids = [0,1])
@@ -296,37 +310,28 @@ if __name__ == "__main__":
             retinanet = retinanet.to(device)
 
 
-    try:
-        if checkpoint_file is not None:
-            retinanet.load_state_dict(torch.load(checkpoint_file).state_dict())
-    except:
-        retinanet.load_state_dict(torch.load(checkpoint_file)["model_state_dict"])
-
-
-    retinanet.training = True
-    # define optimizer and lr scheduler
-    optimizer = optim.Adam(retinanet.parameters(), lr=1e-4)
-
-    scheduler = optim.lr_scheduler.ReduceLROnPlateau(optimizer, patience=patience, verbose=True, mode = "min")
-
-
     # training mode
     retinanet.train()
     retinanet.module.freeze_bn()
-
+    retinanet.training = True
+    
+    # define optimizer and lr scheduler
+    optimizer = optim.Adam(retinanet.parameters(), lr=1e-4)
+    scheduler = optim.lr_scheduler.ReduceLROnPlateau(optimizer, patience=patience, verbose=True, mode = "min")
+    
     loss_hist = collections.deque(maxlen=500)
     most_recent_mAP = 0
 
     print('Num training images: {}'.format(len(train_data)))
 
+    eval_iou(val_data,retinanet)
+    # main training loop
     for epoch_num in range(start_epoch,max_epochs):
 
 
         print("Starting epoch {}".format(epoch_num))
-                
         retinanet.train()
         retinanet.module.freeze_bn()
-
         epoch_loss = []
 
         for iter_num, (im,label,ignore) in enumerate(trainloader):
@@ -375,12 +380,11 @@ if __name__ == "__main__":
                 continue
 
         print("Epoch {} training complete".format(epoch_num))
-        # print("Evaluating on validation dataset")
-        # most_recent_mAP = csv_eval.evaluate(val_data,retinanet,iou_threshold = 0.7)
+        
 
         scheduler.step(np.mean(epoch_loss))
         torch.cuda.empty_cache()
-        #save
+        #save checkpoint at the end of each epoch
         PATH = "detrac_retinanet_epoch{}.pt".format(epoch_num)
         torch.save(retinanet.state_dict(), PATH)
 

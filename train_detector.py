@@ -83,7 +83,7 @@ def plot_detections(dataset,retinanet):
 
 if __name__ == "__main__":
 
-
+    # define parameters here
     depth = 50
     num_classes = 13
     patience = 0
@@ -116,6 +116,7 @@ if __name__ == "__main__":
         raise ValueError('Unsupported model depth, must be one of 18, 34, 50, 101, 152')
 
 
+    # create dataloaders
     try:
         train_data
     except:
@@ -133,10 +134,11 @@ if __name__ == "__main__":
         trainloader = data.DataLoader(train_data,**params)
         testloader = data.DataLoader(val_data,**params)
 
-    use_cuda = torch.cuda.is_available()
-    device = torch.device("cuda:0" if use_cuda else "cpu")
+    
 
     # CUDA
+    use_cuda = torch.cuda.is_available()
+    device = torch.device("cuda:0" if use_cuda else "cpu")
     if use_cuda:
         if torch.cuda.device_count() > 1:
             retinanet = torch.nn.DataParallel(retinanet,device_ids = [0,1])
@@ -145,38 +147,35 @@ if __name__ == "__main__":
             retinanet = retinanet.to(device)
 
 
+    # load checkpoint if necessary
     try:
         if checkpoint_file is not None:
             retinanet.load_state_dict(torch.load(checkpoint_file).state_dict())
     except:
         retinanet.load_state_dict(torch.load(checkpoint_file)["model_state_dict"])
 
-
-    retinanet.training = True
-    # define optimizer and lr scheduler
-    optimizer = optim.Adam(retinanet.parameters(), lr=1e-5)
-
-    scheduler = optim.lr_scheduler.ReduceLROnPlateau(optimizer, patience=patience, verbose=True, mode = "min")
-
-
     # training mode
+    retinanet.training = True
     retinanet.train()
     retinanet.module.freeze_bn()
 
+    optimizer = optim.Adam(retinanet.parameters(), lr=1e-5)
+    scheduler = optim.lr_scheduler.ReduceLROnPlateau(optimizer, patience=patience, verbose=True, mode = "min")
     loss_hist = collections.deque(maxlen=500)
     most_recent_mAP = 0
 
     print('Num training images: {}'.format(len(train_data)))
 
+
+    # main training loop 
     for epoch_num in range(start_epoch,max_epochs):
 
 
         print("Starting epoch {}".format(epoch_num))
-
         retinanet.train()
         retinanet.module.freeze_bn()
-
         epoch_loss = []
+
 
         for iter_num, (im,label,ignore) in enumerate(trainloader):
             
@@ -223,17 +222,11 @@ if __name__ == "__main__":
                 continue
 
         print("Epoch {} training complete".format(epoch_num))
-        #print("Evaluating on validation dataset")
-        #most_recent_mAP = csv_eval.evaluate(val_data,retinanet,iou_threshold = 0.7)
+       
 
         scheduler.step(np.mean(epoch_loss))
         torch.cuda.empty_cache()
-        #save
+        
+        #save checkpoint every epoch
         PATH = "detrac_retinanet_34_{}.pt".format(epoch_num)
         torch.save(retinanet.state_dict(),PATH)
-
-
-    retinanet.eval()
-
-    #torch.save(retinanet, 'model_final.pt')
-    most_recent_mAP = csv_eval.evaluate(val_data,retinanet,iou_threshold = 0.7)
