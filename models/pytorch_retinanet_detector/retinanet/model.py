@@ -240,7 +240,7 @@ class ResNet(nn.Module):
             if isinstance(layer, nn.BatchNorm2d):
                 layer.eval()
 
-    def forward(self, inputs):
+    def forward(self, inputs, LOCALIZE = False):
 
         if self.training:
             img_batch, annotations = inputs
@@ -280,6 +280,9 @@ class ResNet(nn.Module):
                 finalScores = finalScores.cuda()
                 finalAnchorBoxesIndexes = finalAnchorBoxesIndexes.cuda()
                 finalAnchorBoxesCoordinates = finalAnchorBoxesCoordinates.cuda()
+
+            if LOCALIZE:
+                return transformed_anchors, classification
 
             for i in range(classification.shape[2]):
                 scores = torch.squeeze(classification[:, :, i])

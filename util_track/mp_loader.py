@@ -23,7 +23,7 @@ import torch.multiprocessing as mp
 
 class FrameLoader():
     
-    def __init__(self,track_directory,device, det_step, init_frames, buffer_size = 9):
+    def __init__(self,track_directory,device, det_step, init_frames, buffer_size = 9,downsample = 1):
         
         """
         Parameters
@@ -46,7 +46,9 @@ class FrameLoader():
                 files.append(item)
                 files.sort()    
         
+            
             self.files = files
+            self.downsample = downsample
             
             manager = mp.Manager()
             self.det_step = manager.Value("i",det_step)
@@ -62,7 +64,7 @@ class FrameLoader():
             
             self.frame_idx = -1
             
-            self.worker = ctx.Process(target=load_to_queue, args=(self.queue,files,self.det_step,init_frames,device,buffer_size,))
+            self.worker = ctx.Process(target=load_to_queue, args=(self.queue,files,self.det_step,init_frames,device,buffer_size,self.downsample))
             self.worker.start()
             time.sleep(5)
         
@@ -130,7 +132,7 @@ class FrameLoader():
             self.worker.join()
             return -1,(None,None,None)
 
-def load_to_queue(image_queue,files,det_step,init_frames,device,queue_size):
+def load_to_queue(image_queue,files,det_step,init_frames,device,queue_size,downsample):
     """
     Description
     -----------
@@ -178,6 +180,7 @@ def load_to_queue(image_queue,files,det_step,init_frames,device,queue_size):
               # else:
                   # keep as tensor
               original_im = np.array(im)[:,:,[2,1,0]].copy()
+              im = F.resize(im,(int(im.size[1]//downsample),int(im.size[0]//downsample)))
               im = F.to_tensor(im)
               im = F.normalize(im,mean=[0.485, 0.456, 0.406],
                                 std=[0.229, 0.224, 0.225])

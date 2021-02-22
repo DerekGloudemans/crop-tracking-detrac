@@ -16,7 +16,7 @@ import cv2
 from PIL import Image
 import torch
 from torchvision.transforms import functional as F
-from torchvision.ops import roi_align
+from torchvision.ops import roi_align,nms
 import matplotlib.pyplot  as plt
 from scipy.optimize import linear_sum_assignment
 import _pickle as pickle
@@ -49,8 +49,7 @@ class Localization_Tracker():
                  OUT = None,
                  wer = 1.25,
                  skip_step = 1,
-                 downsample = 1,
-                 distance_mode = "iou"):
+                 match_method = "euclidean"):
         """
          Parameters
         ----------
@@ -90,8 +89,7 @@ class Localization_Tracker():
         self.PLOT = PLOT
         self.wer = wer
         self.state_size = kf_params["Q"].shape[0]
-        self.downsample = downsample
-        self.distance_mode = distance_mode
+        self.match_method = match_method
         
         # CUDA
         use_cuda = torch.cuda.is_available()
@@ -111,7 +109,7 @@ class Localization_Tracker():
         # store filter params
         self.filter = Torch_KF(torch.device("cpu"),INIT = kf_params)
        
-        self.loader = FrameLoader(track_dir,self.device,det_step,init_frames,downsample = downsample)
+        self.loader = FrameLoader(track_dir,self.device,det_step,init_frames)
         #self.track_id = int(track_dir.split("MVI_")[-1])
         
         # create output image writer
@@ -147,7 +145,9 @@ class Localization_Tracker():
             "store":0,
             "plot":0
             }
-    
+        
+        self.idx_colors = np.random.rand(1000,3)
+        
     def manage_tracks(self,detections,matchings,pre_ids):
         """
         Updates each detection matched to an existing tracklet, adds new tracklets 
@@ -159,17 +159,22 @@ class Localization_Tracker():
         # update tracked and matched objects
         update_array = np.zeros([len(matchings),4])
         update_ids = []
+        update_classes = []
         for i in range(len(matchings)):
             a = matchings[i,0] # index of pre_loc
             b = matchings[i,1] # index of detections
            
             update_array[i,:] = detections[b,:4]
             update_ids.append(pre_ids[a])
+            update_classes.append(detections[b,4])
             self.fsld[pre_ids[a]] = 0 # fsld = 0 since this id was detected this frame
         
         if len(update_array) > 0:    
             self.filter.update2(update_array,update_ids)
-          
+            
+            for i in range(len(update_ids)):
+                self.all_classes[update_ids[i]][int(update_classes[i])] += 1
+            
             self.time_metrics['update'] += time.time() - start
               
         
@@ -408,7 +413,7 @@ class Localization_Tracker():
         
         return iou
 
-    def plot(self,im,detections,post_locations,all_classes,class_dict,frame = None):
+    def plot(self,im,detections,all_classes,class_dict,post_locations = [],frame = None):
         """
         Description
         -----------
@@ -456,7 +461,7 @@ class Localization_Tracker():
             bbox = post_locations[id][:4]
             
             if sum(bbox) != 0: # all 0's is the default in the storage array, so ignore these
-                color = (0.7,0.7,0.4) #colors[int(obj.cls)]
+                color = self.idx_colors[id] #(0.7,0.7,0.4) #colors[int(obj.cls)]
                 c1 =  (int(bbox[0]),int(bbox[1]))
                 c2 =  (int(bbox[2]),int(bbox[3]))
                 cv2.rectangle(im,c1,c2,color,1)
@@ -472,7 +477,7 @@ class Localization_Tracker():
         if im.shape[0] > 1920:
             im = cv2.resize(im, (1920,1080))
         cv2.imshow("window",im)
-        cv2.waitKey(1)
+        cv2.waitKey(0)
         
         if self.writer is not None:
             self.writer(im)
@@ -518,7 +523,7 @@ class Localization_Tracker():
         
         return output
 
-    def match_hungarian(self,first,second,dist_threshold = 50):
+    def match_hungarian(self,first,second,dist_threshold = 50,method = "euclidean"):
         """
         Description
         -----------
@@ -537,7 +542,7 @@ class Localization_Tracker():
             object x,y coordinates for second frame
         iou_cutoff - float in range[0,1]
             Intersection over union threshold below which match will not be considered
-        
+        method - string - "euclidean" or "iou"
         Returns
         -------
         out_matchings - np.array [l]
@@ -546,7 +551,7 @@ class Localization_Tracker():
         
         """
         # find distances between first and second
-        if self.distance_mode == "linear":
+        if method == "euclidean":
             dist = np.zeros([len(first),len(second)])
             for i in range(0,len(first)):
                 for j in range(0,len(second)):
@@ -661,13 +666,12 @@ class Localization_Tracker():
                     scores = scores.cpu()
                     labels = labels.cpu()
                     boxes = boxes.cpu()
-                    boxes = boxes * self.downsample
                     self.time_metrics['load'] += time.time() - start
                 
                 except: # use mock detector
                     scores,labels,boxes,time_taken = self.detector(self.track_id,frame_num)
                     self.time_metrics["detect"] += time_taken
-                   
+                    
                
     
                 # postprocess detections
@@ -678,7 +682,7 @@ class Localization_Tracker():
                 # match using Hungarian Algorithm        
                 start = time.time()
                 # matchings[i] = [a,b] where a is index of pre_loc and b is index of detection
-                matchings = self.match_hungarian(pre_loc,detections,dist_threshold = self.matching_cutoff)
+                matchings = self.match_hungarian(pre_loc,detections,dist_threshold = self.matching_cutoff,method = self.match_method)
                 self.time_metrics['match'] += time.time() - start
                 
                 # Update tracked objects
@@ -712,64 +716,68 @@ class Localization_Tracker():
                 self.time_metrics["load"] += time.time() - start
                 start = time.time()
 
-                reg_boxes = self.local_to_global(reg_boxes,box_scales,new_boxes)
+                reg_boxes = self.local_to_global(reg_boxes,box_scales,new_boxes) # n_crops x 9441 x 4
+                
+                
+                
                 
                 # parse retinanet detections
-                confs,classes = torch.max(classes, dim = 2)
+                confs,classes = torch.max(classes, dim = 2) # n_crops x 9441
                 
-                # use original bboxes to weight best bboxes 
-                n_anchors = reg_boxes.shape[1]
-                a_priori = torch.from_numpy(pre_loc[:,:4])
-                # bs = torch.from_numpy(box_scales).unsqueeze(1).repeat(1,4)
-                # a_priori = a_priori * 224/bs
-                a_priori = a_priori.unsqueeze(1).repeat(1,n_anchors,1)
+                ## Here we have lots of boxes for each crop, all in global coords
                 
-                iou_score = self.md_iou(a_priori.double(),reg_boxes.double())
-                score = confs + iou_score
-                best_scores ,keep = torch.max(score,dim = 1)
+                ## Flatten into a single set of detections
+                reg_boxes = reg_boxes.view(-1,4)
+                confs = confs.view(-1)
+                classes = classes.view(-1)
                 
-                idx = torch.arange(reg_boxes.shape[0])
-                detections = reg_boxes[idx,keep,:]
-                cls_preds = classes[idx,keep]
-                confs = confs[idx,keep]
-                ious = iou_score[idx,keep]
+                ## First, let's remove all low confidence boxes
+                keep = torch.where(confs > 0.5)[0]
                 
+                reg_boxes = reg_boxes[keep]
+                confs = confs[keep]
+                classes = classes[keep]
+                
+                
+                ## Then, let's do nms to get a set of detections
+                nms_idx = nms(reg_boxes,confs, 0.3)
+                reg_boxes = reg_boxes[nms_idx]
+                confs = confs[nms_idx]
+                classes = classes[nms_idx]
+                
+                ## plot here to take a look at the detections
+                #self.plot(original_im,reg_boxes,self.all_classes,self.class_dict,frame = frame_num)
+                
+                ## lastly, we'll need to match
+                matchings = self.match_hungarian(pre_loc,reg_boxes)
+                
+                # and assign as detections
+                update_array = torch.zeros([len(matchings),4])
+                box_ids = []
+                cls_preds = []
+                for i in range(len(matchings)):
+                    a = matchings[i,0] # index of pre_loc
+                    b = matchings[i,1] # index of detections
+                   
+                    update_array[i,:] = reg_boxes[b,:4]
+                    box_ids.append(pre_ids[a])
+                    cls_preds.append(classes[b])
+
                 self.time_metrics["post_localize"] += time.time() -start
                 start = time.time()
                 
-                
-                # 8a. remove lost objects
-                if True:
-                    removals = [] # which tracks to remove from tracker
-                    id_removals = [] # which indices to remove from box_ids etc
-
-                    for i in range(len(detections)):
-                        if confs[i] < 0.2 or ious[i] < 0.4:
-                            removals.append(box_ids[i])
-                            id_removals.append(i)
-                            self.fsld.pop(box_ids[i],None) # remove key from fsld
-                    if len(removals) > 0:
-                        self.filter.remove(removals) 
-                        id_removals.reverse()
-                        
-                        for item in id_removals:
-                            del box_ids[item]
-                            detections = torch.cat((detections[:item,:],detections[item+1:,:]),dim = 0)
-                            cls_preds = torch.cat((cls_preds[:item],cls_preds[item+1:]),dim = 0)
-                    
                 # store class predictions
                 for i in range(len(cls_preds)):
                     self.all_classes[box_ids[i]][cls_preds[i].item()] += 1
 
                 
-                
                 # map regressed bboxes directly to objects for update step
-                self.filter.update(detections,box_ids)
+                self.filter.update(update_array,box_ids)
                 self.time_metrics['update'] += time.time() - start
                 
                 # increment all fslds
-                for i in range(len(box_ids)):
-                        self.fsld[box_ids[i]] += 1
+                for i in range(len(pre_ids)):
+                        self.fsld[pre_ids[i]] += 1
         
                 # remove overlapping objects and anomalies
                 self.remove_overlaps()
@@ -793,7 +801,7 @@ class Localization_Tracker():
             # 10. Plot
             start = time.time()
             if self.PLOT:
-                self.plot(original_im,detections,post_locations,self.all_classes,self.class_dict,frame = frame_num)
+                self.plot(original_im,detections,self.all_classes,self.class_dict,frame = frame_num,post_locations = post_locations)
             self.time_metrics['plot'] += time.time() - start
        
             # load next frame  

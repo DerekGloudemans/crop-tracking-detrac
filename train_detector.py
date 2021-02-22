@@ -14,6 +14,8 @@ import os ,sys
 import numpy as np
 import random 
 import cv2
+import time
+
 random.seed = 0
 import torch
 from torch.utils import data
@@ -35,6 +37,28 @@ from util_detrac.detrac_detection_dataset import Detection_Dataset,collate
 import warnings
 warnings.filterwarnings(action='once')
 
+def to_cpu(checkpoint):
+    """
+    """
+    try:
+        retinanet = model.resnet50(13)
+        retinanet = nn.DataParallel(retinanet,device_ids = [0,1,2,3])
+        retinanet.load_state_dict(torch.load(checkpoint))
+    except:
+        retinanet = model.resnet34(13)
+        retinanet = nn.DataParallel(retinanet,device_ids = [0,1,2,3])
+        retinanet.load_state_dict(torch.load(checkpoint))
+        
+    retinanet = nn.DataParallel(retinanet, device_ids = [0])
+    retinanet = retinanet.cpu()
+    
+    new_state_dict = {}
+    for key in retinanet.state_dict():
+        new_state_dict[key.split("module.")[-1]] = retinanet.state_dict()[key]
+        
+    torch.save(new_state_dict, "cpu_{}".format(checkpoint))
+    print ("Successfully created: cpu_{}".format(checkpoint))
+
 def plot_detections(dataset,retinanet):
     """
     Plots detections output
@@ -44,7 +68,7 @@ def plot_detections(dataset,retinanet):
 
     idx = np.random.randint(0,len(dataset))
 
-    im,label,meta = dataset[idx]
+    im,gt,meta = dataset[idx]
 
     im = im.to(device).unsqueeze(0).float()
     #im = im[:,:,:224,:224]
@@ -73,6 +97,10 @@ def plot_detections(dataset,retinanet):
     for box in boxes:
         box = box.int()
         im = cv2.rectangle(im,(box[0],box[1]),(box[2],box[3]),(0.7,0.3,0.2),1)
+    
+    for box in gt:
+        box = box.int()
+        im = cv2.rectangle(im,(box[0],box[1]),(box[2],box[3]),(0.0,0.3,0.2),1)
     cv2.imshow("Frame",im)
     cv2.waitKey(2000)
 
@@ -88,13 +116,13 @@ if __name__ == "__main__":
     num_classes = 13
     patience = 0
     max_epochs = 50
-    start_epoch = 0
-    checkpoint_file = None
+    start_epoch = 8
+    checkpoint_file = "detrac_detector_resnet50_e7.pt"
 
     # Paths to data here
-    label_dir       = "/home/worklab/Desktop/detrac/DETRAC-Train-Annotations-XML-v3"
-    train_partition = "/home/worklab/Desktop/detrac/DETRAC-train-data"
-    val_partition   = "/home/worklab/Desktop/detrac/DETRAC-val-data"
+    label_dir       = "/home/worklab/Data/cv/Detrac/DETRAC-Train-Annotations-XML-v3"
+    train_partition = "/home/worklab/Data/cv/Detrac/detrac_train_partition"
+    val_partition   = "/home/worklab/Data/cv/Detrac/detrac_val_partition"
 
 
 
@@ -141,7 +169,7 @@ if __name__ == "__main__":
     device = torch.device("cuda:0" if use_cuda else "cpu")
     if use_cuda:
         if torch.cuda.device_count() > 1:
-            retinanet = torch.nn.DataParallel(retinanet,device_ids = [0,1])
+            retinanet = torch.nn.DataParallel(retinanet,device_ids = [0,1,2,3])
             retinanet = retinanet.to(device)
         else:
             retinanet = retinanet.to(device)
@@ -152,14 +180,14 @@ if __name__ == "__main__":
         if checkpoint_file is not None:
             retinanet.load_state_dict(torch.load(checkpoint_file).state_dict())
     except:
-        retinanet.load_state_dict(torch.load(checkpoint_file)["model_state_dict"])
+        retinanet.load_state_dict(torch.load(checkpoint_file))
 
     # training mode
     retinanet.training = True
     retinanet.train()
     retinanet.module.freeze_bn()
 
-    optimizer = optim.Adam(retinanet.parameters(), lr=1e-5)
+    optimizer = optim.Adam(retinanet.parameters(), lr=1e-6)
     scheduler = optim.lr_scheduler.ReduceLROnPlateau(optimizer, patience=patience, verbose=True, mode = "min")
     loss_hist = collections.deque(maxlen=500)
     most_recent_mAP = 0
@@ -228,5 +256,7 @@ if __name__ == "__main__":
         torch.cuda.empty_cache()
         
         #save checkpoint every epoch
-        PATH = "detrac_retinanet_34_{}.pt".format(epoch_num)
+        PATH = "detrac_detector_resnet50_e{}.pt".format(epoch_num)
         torch.save(retinanet.state_dict(),PATH)
+        torch.cuda.empty_cache()
+        time.sleep(60) # to cool down GPUs I guess

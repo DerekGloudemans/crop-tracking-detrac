@@ -171,7 +171,9 @@ class FocalLoss(nn.Module):
                     regression_losses.append(torch.tensor(0).float().cuda())
                 else:
                     regression_losses.append(torch.tensor(0).float())
-
+                    
+        classification_losses = [item.cuda() for item in classification_losses]
+        regression_losses = [item.cuda() for item in regression_losses]
         return torch.stack(classification_losses).mean(dim=0, keepdim=True), torch.stack(regression_losses).mean(dim=0, keepdim=True)
 
     

@@ -31,13 +31,13 @@ import collections
 
 
 # add relevant packages and directories to path
-localizer_path = os.path.join(os.getcwd(),"models","pytorch_retinanet_localizer")
+localizer_path = os.path.join(os.getcwd(),"models","pytorch_retinanet_detector")
 sys.path.insert(0,localizer_path)
 detrac_util_path = os.path.join(os.getcwd(),"util_detrac")
 sys.path.insert(0,detrac_util_path)
 
 #from _detectors.pytorch_retinanet.retinanet import model, csv_eval 
-from models.pytorch_retinanet_localizer.retinanet import model
+from models.pytorch_retinanet_detector.retinanet import model
 from util_detrac.detrac_multi_localization_dataset import LocMulti_Dataset, class_dict,collate
 
 
@@ -54,13 +54,14 @@ def plot_detections(dataset,retinanet):
 
     idx = np.random.randint(0,len(dataset))
 
-    im,label,meta = dataset[idx]
+    im,gt,meta = dataset[idx]
 
     im = im.to(device).unsqueeze(0).float()
     #im = im[:,:,:224,:224]
 
 
     with torch.no_grad():
+
         scores,labels, boxes = retinanet(im)
 
     if len(boxes) > 0:
@@ -78,16 +79,16 @@ def plot_detections(dataset,retinanet):
     cv_im = cv_im[::-1, :, :]  
 
     im = cv_im.transpose((1,2,0))
+
     for box in boxes:
         box = box.int()
         im = cv2.rectangle(im,(box[0],box[1]),(box[2],box[3]),(0.7,0.3,0.2),1)
     
-    if torch.sum(label) != 0:
-        for box in label:
-            box = box.int()
-            im = cv2.rectangle(im,(box[0],box[1]),(box[2],box[3]),(0.2,0.3,0.7),1)
+    for box in gt:
+        box = box.int()
+        im = cv2.rectangle(im,(box[0],box[1]),(box[2],box[3]),(0.0,0.3,0.2),1)
     cv2.imshow("Frame",im)
-    cv2.waitKey(200)
+    cv2.waitKey(2000)
 
     retinanet.train()
     retinanet.training = True
@@ -246,17 +247,17 @@ def to_cpu(retinanet,checkpoint):
 if __name__ == "__main__":
     
     # define parameters
-    depth = 34
+    depth = 50
     num_classes = 13
     patience = 0
     max_epochs = 50
-    start_epoch = 0
-    checkpoint_file = os.path.join(os.getcwd(),"config","localizer_state_dict.pt")
+    start_epoch = 5
+    checkpoint_file = "detrac_localizer_retinanet_epoch4.pt"
 
     # Paths to data here
-    label_dir       = "/home/worklab/Desktop/detrac/DETRAC-Train-Annotations-XML-v3"
-    train_partition = "/home/worklab/Desktop/detrac/DETRAC-train-data"
-    val_partition   = "/home/worklab/Desktop/detrac/DETRAC-val-data"
+    label_dir       = "/home/worklab/Data/cv/Detrac/DETRAC-Train-Annotations-XML-v3"
+    train_partition = "/home/worklab/Data/cv/Detrac/detrac_train_partition"
+    val_partition   = "/home/worklab/Data/cv/Detrac/detrac_val_partition"
 
     ###########################################################################
 
@@ -283,7 +284,7 @@ if __name__ == "__main__":
         train_data = LocMulti_Dataset(train_partition,label_dir)
         val_data = LocMulti_Dataset(val_partition,label_dir)
         
-        params = {'batch_size' : 8,
+        params = {'batch_size' : 32,
               'shuffle'    : True,
               'num_workers': 0,
               'drop_last'  : True,
@@ -292,31 +293,32 @@ if __name__ == "__main__":
         trainloader = data.DataLoader(train_data,**params)
         testloader = data.DataLoader(val_data,**params)
 
-    # load checkpoint
-    try:
-        if checkpoint_file is not None:
-            retinanet.load_state_dict(torch.load(checkpoint_file))
-    except:
-        retinanet.load_state_dict(torch.load(checkpoint_file)["model_state_dict"])
+   
 
     # CUDA
     use_cuda = torch.cuda.is_available()
     device = torch.device("cuda:0" if use_cuda else "cpu")
     if use_cuda:
         if torch.cuda.device_count() > 1:
-            retinanet = torch.nn.DataParallel(retinanet,device_ids = [0,1])
+            retinanet = torch.nn.DataParallel(retinanet,device_ids = [0,1,2,3])
             retinanet = retinanet.to(device)
         else:
             retinanet = retinanet.to(device)
 
-
+     # load checkpoint
+    try:
+        if checkpoint_file is not None:
+            retinanet.load_state_dict(torch.load(checkpoint_file))
+    except:
+        retinanet.load_state_dict(torch.load(checkpoint_file))
+        
     # training mode
     retinanet.train()
     retinanet.module.freeze_bn()
     retinanet.training = True
     
     # define optimizer and lr scheduler
-    optimizer = optim.Adam(retinanet.parameters(), lr=1e-4)
+    optimizer = optim.Adam(retinanet.parameters(), lr=1e-6)
     scheduler = optim.lr_scheduler.ReduceLROnPlateau(optimizer, patience=patience, verbose=True, mode = "min")
     
     loss_hist = collections.deque(maxlen=500)
@@ -385,7 +387,7 @@ if __name__ == "__main__":
         scheduler.step(np.mean(epoch_loss))
         torch.cuda.empty_cache()
         #save checkpoint at the end of each epoch
-        PATH = "detrac_retinanet_epoch{}.pt".format(epoch_num)
+        PATH = "detrac_localizer_retinanet_epoch{}.pt".format(epoch_num)
         torch.save(retinanet.state_dict(), PATH)
 
 
