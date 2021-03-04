@@ -30,6 +30,7 @@ import matplotlib
 
 #%%
 result_dir = "/home/worklab/Documents/derek/detrac-lbt/temp_outputs"
+result_dir = "/home/worklab/Documents/derek/detrac-lbt/temp_outputs"
 
 # parse all .cpkl files into a single dictionary
 # {detector_name:{det_step: results, det_step:results,...},
@@ -51,7 +52,9 @@ all_results = {
 
 all_results = {
     1:{},
-    9:{}
+    9:{},
+    5:{},
+    45:{}
     }
         
 for file in os.listdir(result_dir):
@@ -66,228 +69,227 @@ for file in os.listdir(result_dir):
             (tracklets,metrics,time_metrics,_) = pickle.load(f)
 
     # get det_step
-    conf = float(file.split("_")[-1].split(".cpkl")[0])
-    track_id = int(file.split("_")[-3])
-    det_step = int(file.split("_")[-2])
+    det_step = int(file.split("_")[-1].split(".cpkl")[0])
+    track_id = (file.split("_")[-2])
     
     try:
-        all_results[det_step][conf][track_id] = (tracklets,metrics,time_metrics)
+        all_results[det_step][track_id] = (tracklets,metrics,time_metrics)
     except:
-        all_results[det_step][conf] = {track_id:(tracklets,metrics,time_metrics)}
+        all_results[det_step] = {track_id:(tracklets,metrics,time_metrics)}
  
 
-#%% Aggregate along all tracks
-agg = {}
-for key in all_results:
-    agg[key] = {}
-    for det_step in all_results[key]:
-        agg[key][det_step] = {}
+# #%% Aggregate along all tracks
+# agg = {}
+# for key in all_results:
+#     agg[key] = {}
+#     for det_step in all_results[key]:
+#         agg[key][det_step] = {}
         
-        n = 0
-        aggregator = {}
-        for track_id in all_results[key][det_step]:
-            # if track_id in [40712,40774,40773,40772,40711,40771,40792,40775,39361,40901]:
-                n += 1
-                for metric in all_results[key][det_step][track_id][1]:
-                    try:
-                        aggregator[metric] += all_results[key][det_step][track_id][1][metric][0]
-                    except:
-                        aggregator[metric] = all_results[key][det_step][track_id][1][metric][0]
-        for item in aggregator:
-            aggregator[item] = aggregator[item]/n
-        agg[key][det_step] = aggregator
+#         n = 0
+#         aggregator = {}
+#         for track_id in all_results[key][det_step]:
+#             # if track_id in [40712,40774,40773,40772,40711,40771,40792,40775,39361,40901]:
+#                 n += 1
+#                 for metric in all_results[key][det_step][track_id][1]:
+#                     try:
+#                         aggregator[metric] += all_results[key][det_step][track_id][1][metric][0]
+#                     except:
+#                         aggregator[metric] = all_results[key][det_step][track_id][1][metric][0]
+#         for item in aggregator:
+#             aggregator[item] = aggregator[item]/n
+#         agg[key][det_step] = aggregator
         
         
         
-with open(os.path.join(result_dir,"aggregated_test_results_.cpkl"),"wb") as f:
-    pickle.dump(agg,f)
+# with open(os.path.join(result_dir,"aggregated_test_results_.cpkl"),"wb") as f:
+#     pickle.dump(agg,f)
        
 
 
-#%% Generate Pareto Curve
-pareto_all = []
-i = 0
-for key in agg:
-    result = agg[key]
-    for det_step in result:
-        metric = result[det_step]
-        pareto_all.append(metric)
+# #%% Generate Pareto Curve
+# pareto_all = []
+# i = 0
+# for key in agg:
+#     result = agg[key]
+#     for det_step in result:
+#         metric = result[det_step]
+#         pareto_all.append(metric)
         
-# if there is no point in pareto that is both faster and more accurate, add
-pareto = {}
-for point in pareto_all:
-    include = True
+# # if there is no point in pareto that is both faster and more accurate, add
+# pareto = {}
+# for point in pareto_all:
+#     include = True
     
-    mota = point["mota"]
-    speed = point["framerate"]
+#     mota = point["mota"]
+#     speed = point["framerate"]
     
-    for other in pareto_all:
-        other_mota = other["mota"]
-        other_speed = other["framerate"]
+#     for other in pareto_all:
+#         other_mota = other["mota"]
+#         other_speed = other["framerate"]
     
-        if other_mota > mota and other_speed > speed:
-            include = False
-            break
+#         if other_mota > mota and other_speed > speed:
+#             include = False
+#             break
     
-    if include:
-        pareto[round(speed*100)] = point
+#     if include:
+#         pareto[round(speed*100)] = point
      
    
-# sort pareto in terms of framerate
+# # sort pareto in terms of framerate
             
-#%% Generate MOTA-Hz plots for all detectors
-# plt.style.use('ggplot')
-# with open(os.path.join(result_dir,"aggregated_test_results_.cpkl"),"rb") as f:
-#      agg = pickle.load(f)
+# #%% Generate MOTA-Hz plots for all detectors
+# # plt.style.use('ggplot')
+# # with open(os.path.join(result_dir,"aggregated_test_results_.cpkl"),"rb") as f:
+# #      agg = pickle.load(f)
     
-plot_dict = {
-               0:[],
-               0.1:[],
-               0.2:[],
-               0.3:[],
-               0.4:[],
-               0.5:[],
-               0.6:[],
-               0.7:[],
-               0.8:[],
-               0.9:[]
-               }
+# plot_dict = {
+#                0:[],
+#                0.1:[],
+#                0.2:[],
+#                0.3:[],
+#                0.4:[],
+#                0.5:[],
+#                0.6:[],
+#                0.7:[],
+#                0.8:[],
+#                0.9:[]
+#                }
 
-plot_dict = {
-    1:[],
-    9:[]
-    }
+# plot_dict = {
+#     1:[],
+#     9:[]
+#     }
 
 
-for detector in agg.keys():
-    det_steps = []
-    detector_hz = []
-    detector_MOTAs = []
+# for detector in agg.keys():
+#     det_steps = []
+#     detector_hz = []
+#     detector_MOTAs = []
         
-    for conf in [0,0.1,0.2,0.3,0.4,0.5,0.6,0.7,0.8,0.9]:
+#     for conf in [0,0.1,0.2,0.3,0.4,0.5,0.6,0.7,0.8,0.9]:
 
-        if conf in agg[detector].keys():
-           if True:
-               det_steps.append(conf)
-               detector_hz.append(agg[detector][conf]["framerate"])
-               detector_MOTAs.append(agg[detector][conf]["mota"])
+#         if conf in agg[detector].keys():
+#            if True:
+#                det_steps.append(conf)
+#                detector_hz.append(agg[detector][conf]["framerate"])
+#                detector_MOTAs.append(agg[detector][conf]["mota"])
        
-        plot_dict[detector] = (det_steps,detector_hz,detector_MOTAs)
+#         plot_dict[detector] = (det_steps,detector_hz,detector_MOTAs)
 
 
 
-fig = plt.figure()
-ax = fig.add_axes([0, 0, 1, 1])
-ax.xaxis.set_tick_params(which='major', size=5, width=2, direction='in', top='on')
-ax.xaxis.set_tick_params(which='minor', size=5, width=2, direction='in', top='on')
-ax.yaxis.set_tick_params(which='major', size=5, width=2, direction='in', right='on')
-ax.yaxis.set_tick_params(which='minor', size=5, width=2, direction='in', right='on')
+# fig = plt.figure()
+# ax = fig.add_axes([0, 0, 1, 1])
+# ax.xaxis.set_tick_params(which='major', size=5, width=2, direction='in', top='on')
+# ax.xaxis.set_tick_params(which='minor', size=5, width=2, direction='in', top='on')
+# ax.yaxis.set_tick_params(which='major', size=5, width=2, direction='in', right='on')
+# ax.yaxis.set_tick_params(which='minor', size=5, width=2, direction='in', right='on')
 
-legend = list(all_results.keys())
+# legend = list(all_results.keys())
 
-# a,b,c = plot_dict["pareto"]
-# plt.plot(b,c,marker = "D", markersize = 6, linewidth = 1, color = (0.4,0.8,0.4))
+# # a,b,c = plot_dict["pareto"]
+# # plt.plot(b,c,marker = "D", markersize = 6, linewidth = 1, color = (0.4,0.8,0.4))
 
-# a,b,c = plot_dict["skip"]
-# plt.plot(b,c,marker = "D", markersize = 6,linewidth = 1, color = (0.8,0.4,0.4))
+# # a,b,c = plot_dict["skip"]
+# # plt.plot(b,c,marker = "D", markersize = 6,linewidth = 1, color = (0.8,0.4,0.4))
 
-kk = 0
-for detector in plot_dict.keys():
-     # legend.append(detector)
-     a,b,c = plot_dict[detector]
-     if detector not in ["pareto", "skip"]:
-         plt.plot(b,c,"--",linewidth = 1, color = (0.1-kk,0.1-kk,0.1-kk))
-         kk-=0.1
+# kk = 0
+# for detector in plot_dict.keys():
+#      # legend.append(detector)
+#      a,b,c = plot_dict[detector]
+#      if detector not in ["pareto", "skip"]:
+#          plt.plot(b,c,"--",linewidth = 1, color = (0.1-kk,0.1-kk,0.1-kk))
+#          kk-=0.1
         
-# a,b,c = plot_dict["pareto"]
-# plt.plot(b,c,linewidth = 2, color = (0.4,0.8,0.4))
+# # a,b,c = plot_dict["pareto"]
+# # plt.plot(b,c,linewidth = 2, color = (0.4,0.8,0.4))
 
-# a,b,c = plot_dict["skip"]
-# plt.plot(b,c,linewidth = 2, color = (0.8,0.4,0.4))
-
-
-plt.legend(legend,fontsize = 16)
-plt.tick_params(axis='x', labelsize= 12)
-plt.tick_params(axis='y', labelsize= 12)
-plt.xlabel("Framerate (Hz)",fontsize = 18,fontname = "Times New Roman")
-plt.ylabel("MOTA",fontsize = 18,fontname = "Times New Roman")
-#plt.xscale("log)")    
-
-plt.savefig("/home/worklab/Desktop/pareto.png",dpi = 1000,bbox_inches = "tight")
+# # a,b,c = plot_dict["skip"]
+# # plt.plot(b,c,linewidth = 2, color = (0.8,0.4,0.4))
 
 
-#%% Print PR MOTA
+# plt.legend(legend,fontsize = 16)
+# plt.tick_params(axis='x', labelsize= 12)
+# plt.tick_params(axis='y', labelsize= 12)
+# plt.xlabel("Framerate (Hz)",fontsize = 18,fontname = "Times New Roman")
+# plt.ylabel("MOTA",fontsize = 18,fontname = "Times New Roman")
+# #plt.xscale("log)")    
 
-PR_MOTAs = {1:[],
-            5:[],
-            9:[],
-            15:[],
-            25:[],
-            35:[]
-            }
+# plt.savefig("/home/worklab/Desktop/pareto.png",dpi = 1000,bbox_inches = "tight")
 
-for conf in agg:
-    for det_step in agg[conf]:
-        PR_MOTAs[det_step].append(agg[conf][det_step]["mota"])
 
-for item in PR_MOTAs:
-    avg = sum(PR_MOTAs[item])/len(PR_MOTAs[item])
-    print("PR-MOTA for det step {}: {}".format(item,avg))
+# #%% Print PR MOTA
 
-#%% Generate relative MOTA-Hz plots for all detectors
-with open("aggregated_test_results.cpkl","rb") as f:
-    agg = pickle.load(f)
+# PR_MOTAs = {1:[],
+#             5:[],
+#             9:[],
+#             15:[],
+#             25:[],
+#             35:[]
+#             }
+
+# for conf in agg:
+#     for det_step in agg[conf]:
+#         PR_MOTAs[det_step].append(agg[conf][det_step]["mota"])
+
+# for item in PR_MOTAs:
+#     avg = sum(PR_MOTAs[item])/len(PR_MOTAs[item])
+#     print("PR-MOTA for det step {}: {}".format(item,avg))
+
+# #%% Generate relative MOTA-Hz plots for all detectors
+# with open("aggregated_test_results.cpkl","rb") as f:
+#     agg = pickle.load(f)
     
-plot_dict = {
-               "ACF":[],
-               "CompACT":[],
-               "RCNN":[],
-               "retinanet":[],
-               "DPM":[],
-               "ground_truth":[]
-               }
+# plot_dict = {
+#                "ACF":[],
+#                "CompACT":[],
+#                "RCNN":[],
+#                "retinanet":[],
+#                "DPM":[],
+#                "ground_truth":[]
+#                }
 
-for detector in agg.keys():
-    det_steps = []
-    detector_hz = []
-    detector_MOTAs = []
+# for detector in agg.keys():
+#     det_steps = []
+#     detector_hz = []
+#     detector_MOTAs = []
         
-    for det_step in range(50):
-        if det_step == 1:
-            baseline_hz = agg[detector][det_step]["framerate"]
-            baseline_mota = agg[detector][det_step]["mota"]
-        if det_step in agg[detector].keys():
-           det_steps.append(det_step)
-           detector_hz.append(agg[detector][det_step]["framerate"]/baseline_hz)
-           detector_MOTAs.append(agg[detector][det_step]["mota"]/baseline_mota)
+#     for det_step in range(50):
+#         if det_step == 1:
+#             baseline_hz = agg[detector][det_step]["framerate"]
+#             baseline_mota = agg[detector][det_step]["mota"]
+#         if det_step in agg[detector].keys():
+#            det_steps.append(det_step)
+#            detector_hz.append(agg[detector][det_step]["framerate"]/baseline_hz)
+#            detector_MOTAs.append(agg[detector][det_step]["mota"]/baseline_mota)
        
-        plot_dict[detector] = (det_steps,detector_hz,detector_MOTAs)
+#         plot_dict[detector] = (det_steps,detector_hz,detector_MOTAs)
 
-plt.figure()
-legend = []
-for detector in plot_dict.keys():
-    legend.append(detector)
-    a,b,c = plot_dict[detector]
-    plt.plot(b,c,linewidth = 3)
+# plt.figure()
+# legend = []
+# for detector in plot_dict.keys():
+#     legend.append(detector)
+#     a,b,c = plot_dict[detector]
+#     plt.plot(b,c,linewidth = 3)
 
-plt.legend(legend,fontsize = 20)
-plt.tick_params(axis='x', labelsize= 16)
-plt.tick_params(axis='y', labelsize= 16)
-plt.xlabel("Relative framerate",fontsize = 20)
-plt.ylabel("Relative accuracy",fontsize = 20)
+# plt.legend(legend,fontsize = 20)
+# plt.tick_params(axis='x', labelsize= 16)
+# plt.tick_params(axis='y', labelsize= 16)
+# plt.xlabel("Relative framerate",fontsize = 20)
+# plt.ylabel("Relative accuracy",fontsize = 20)
  
        
 #%% Plot time metrics for retinanet
 all_time_metrics = {}
-for det_step in all_results["retinanet"]:
+for det_step in all_results:
     time_metrics = {}
 
-    for track_id in all_results["retinanet"][det_step]:
-        for key in all_results['retinanet'][det_step][track_id][2].keys():
+    for track_id in all_results[det_step]:
+        for key in all_results[det_step][track_id][2].keys():
             try:
-                time_metrics[key] += all_results['retinanet'][det_step][track_id][2][key]
+                time_metrics[key] += all_results[det_step][track_id][2][key]
             except:
-                time_metrics[key] = all_results['retinanet'][det_step][track_id][2][key]
+                time_metrics[key] = all_results[det_step][track_id][2][key]
     all_time_metrics[det_step] = time_metrics
     
 max_time = sum(all_time_metrics[1][key] for key in all_time_metrics[1].keys() )
@@ -301,24 +303,24 @@ for det_step in range(50):
         for key in all_time_metrics[det_step].keys():
             time_agg[key].append(all_time_metrics[det_step][key]/max_time)
 
-time_agg["filter and manage tracks"] = [time_agg["predict"][i] + time_agg["update"][i] + time_agg["add and remove"][i] + time_agg["store"][i] + time_agg["plot"][i] for i in range(len(time_agg["update"]))]
-time_agg["detect"] = [time_agg["detect"][i] + time_agg["parse"][i] + time_agg["load"][i] for i in range(len(time_agg["detect"]))]
-time_agg["localize"] = [time_agg["localize"][i] + time_agg["pre_localize and align"][i] + time_agg["post_localize"][i] for i in range(len(time_agg["localize"]))]
+# time_agg["filter and manage tracks"] = [time_agg["predict"][i] + time_agg["update"][i] + time_agg["add and remove"][i] + time_agg["store"][i] + time_agg["plot"][i] for i in range(len(time_agg["update"]))]
+# time_agg["detect"] = [time_agg["detect"][i] + time_agg["parse"][i] + time_agg["load"][i] for i in range(len(time_agg["detect"]))]
+# time_agg["localize"] = [time_agg["localize"][i] + time_agg["pre_localize and align"][i] + time_agg["post_localize"][i] for i in range(len(time_agg["localize"]))]
 
-del time_agg["predict"]
-del time_agg["update"]
-del time_agg["parse"]
-del time_agg["add and remove"]
-del time_agg["store"]
-del time_agg["plot"]
-del time_agg["pre_localize and align"]
-del time_agg["post_localize"]
-del time_agg["load"]
-
+# del time_agg["predict"]
+# del time_agg["update"]
+# del time_agg["parse"]
+# del time_agg["add and remove"]
+# del time_agg["store"]
+# del time_agg["plot"]
+# del time_agg["pre_localize and align"]
+# del time_agg["post_localize"]
+# del time_agg["load"]
+print(len(time_agg),len(det_steps))
 plots  = [time_agg[key] for key in time_agg.keys()]
 legend = [key for key in time_agg.keys()]
-legend = [legend[1],legend[2],legend[3],legend[0]]
-plots  = [plots[1],plots[2],plots[3],plots[0]]
+#legend = [legend[1],legend[2],legend[3],legend[0]]
+#plots  = [plots[1],plots[2],plots[3],plots[0]]
 
 plt.stackplot(det_steps,plots)
 plt.legend(legend,fontsize = 18)
@@ -566,7 +568,7 @@ for key in all_results:
         #     pickle.dump(agg,f)
             
 #%% Generate relative MOTA-Hz plots for all detectors
- with open("/home/worklab/Documents/code/tracking-by-localization/_eval/aggregated_test_results.cpkl","rb") as f:
+with open("/home/worklab/Documents/code/tracking-by-localization/_eval/aggregated_test_results.cpkl","rb") as f:
      agg2 = pickle.load(f)
 agg["retinanet"] = agg2["retinanet"]    
 

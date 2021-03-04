@@ -14,7 +14,7 @@ import matplotlib.pyplot as plt
 import cv2 
 import os,sys,inspect
 import time
-
+from torch import nn
 #from detrac_files.detrac_tracking_dataset import Track_Dataset
 
 from torch.utils.data import DataLoader
@@ -42,13 +42,32 @@ from util_detrac.detrac_detection_dataset import Detection_Dataset,collate
 # filter and CNNs
 from util_track.kf import Torch_KF
 from models.pytorch_retinanet_detector.retinanet.model import resnet50 
-from models.pytorch_retinanet_localizer.retinanet.model import resnet34
 
 plt.style.use("seaborn")
 random.seed  = 0
 
 
-
+def to_cpu(checkpoint):
+    """
+    """
+    try:
+        retinanet = resnet50(13)
+        retinanet = nn.DataParallel(retinanet,device_ids = [0,1,2,3])
+        retinanet.load_state_dict(torch.load(checkpoint))
+    except:
+        retinanet = resnet34(13)
+        retinanet = nn.DataParallel(retinanet,device_ids = [0,1,2,3])
+        retinanet.load_state_dict(torch.load(checkpoint))
+        
+    retinanet = nn.DataParallel(retinanet, device_ids = [0])
+    retinanet = retinanet.cpu()
+    
+    new_state_dict = {}
+    for key in retinanet.state_dict():
+        new_state_dict[key.split("module.")[-1]] = retinanet.state_dict()[key]
+        
+    torch.save(new_state_dict, "cpu_{}".format(checkpoint))
+    print ("Successfully created: cpu_{}".format(checkpoint))
 
 
 def test_outputs(bboxes,crops):
@@ -337,7 +356,9 @@ def fit_localizer_R(loader,
                     skew_ratio = 1, 
                     save_file = "temp.cpkl",
                     PLOT = False,
-                    wer = 1.25):
+                    wer = 1.25,
+                    cs = 224,
+                    alpha = 1):
     """
     Fits measurement error covariance matrix for KF
     
@@ -449,8 +470,8 @@ def fit_localizer_R(loader,
                 new_boxes = np.zeros([len(boxes),5]) 
         
                 # use either s or s x r for both dimensions, whichever is larger,so crop is square
-                #box_scales = np.max(np.stack((boxes[:,2],boxes[:,2]*boxes[:,3]),axis = 1),axis = 1)
-                box_scales = np.min(np.stack((boxes[:,2],boxes[:,2]*boxes[:,3]),axis = 1),axis = 1) #/2.0
+                box_scales = np.max(np.stack((boxes[:,2],boxes[:,2]*boxes[:,3]),axis = 1),axis = 1)
+                #box_scales = np.min(np.stack((boxes[:,2],boxes[:,2]*boxes[:,3]),axis = 1),axis = 1) #/2.0
                     
                 #expand box slightly
                 box_scales = box_scales * ber# box expansion ratio
@@ -465,7 +486,7 @@ def fit_localizer_R(loader,
                 torch_boxes = torch.from_numpy(new_boxes).float().to(device)
                 
                 # crop using roi align
-                crops = roi_align(frames,torch_boxes,(224,224))
+                crops = roi_align(frames,torch_boxes,(cs,cs))
                 
                 # batch_idx,batch,batch_confs,batch_class = localizer(crops,LOCALIZE = True)
                 
@@ -491,7 +512,7 @@ def fit_localizer_R(loader,
                 a_priori[:,2] -= new_boxes[:,1]
                 a_priori[:,3] -= new_boxes[:,2]
                 bs = torch.from_numpy(box_scales).unsqueeze(1).repeat(1,4)
-                a_priori = a_priori * 224/bs
+                a_priori = a_priori * cs/bs
                 a_priori = a_priori.unsqueeze(1).repeat(1,n_anchors,1)
                 
                 #reg_boxes = reg_boxes.unsqueeze(0).repeat(b,1,1)
@@ -506,7 +527,7 @@ def fit_localizer_R(loader,
                 keep_num = 1
                 
                 # evaluate each box on conf
-                alpha = 1
+                alpha = 0.6
                 beta  = 0 
                 gamma = 0
                 delta = 1
@@ -562,7 +583,7 @@ def fit_localizer_R(loader,
                         reg_true[:,1] = reg_true[:,1] - new_boxes[:,2]
                         reg_true[:,2] = reg_true[:,2] - new_boxes[:,1]
                         reg_true[:,3] = reg_true[:,3] - new_boxes[:,2]
-                        reg = reg_true[i] * 224/box_scales[i]
+                        reg = reg_true[i] * cs/box_scales[i]
                         
                         # plot pred bbox
                         im = cv2.rectangle(im,(bbox[0],bbox[1]),(bbox[2],bbox[3]),(0.9,0.2,0.2),2)
@@ -580,10 +601,10 @@ def fit_localizer_R(loader,
                     
                     
                 # # add in original box offsets and scale outputs by original box scales
-                detections[:,0] = detections[:,0]*box_scales/224 + new_boxes[:,1]
-                detections[:,2] = detections[:,2]*box_scales/224 + new_boxes[:,1]
-                detections[:,1] = detections[:,1]*box_scales/224 + new_boxes[:,2]
-                detections[:,3] = detections[:,3]*box_scales/224 + new_boxes[:,2]
+                detections[:,0] = detections[:,0]*box_scales/cs + new_boxes[:,1]
+                detections[:,2] = detections[:,2]*box_scales/cs + new_boxes[:,1]
+                detections[:,1] = detections[:,1]*box_scales/cs + new_boxes[:,2]
+                detections[:,3] = detections[:,3]*box_scales/cs + new_boxes[:,2]
         
                 # # convert into xysr form 
                 output = np.zeros([len(detections),4])
@@ -742,8 +763,8 @@ def filter_rollouts(loader,
                     speed_init = "none",
                     state_size = 8,
                     keep_nums = [1],
-                    wer = 1.25
-                    ):
+                    wer = 1.25,
+                    cs = 112):
     
      """
      Simulates tracking by performing several predict measure update steps
@@ -921,7 +942,7 @@ def filter_rollouts(loader,
                  torch_boxes = torch.from_numpy(new_boxes).float().to(device)
                  
                  # crop using roi align
-                 crops = roi_align(frames,torch_boxes,(224,224))
+                 crops = roi_align(frames,torch_boxes,(cs,cs))
                  
                  # _,reg_out = localizer(crops)
                  # torch.cuda.synchronize()
@@ -945,7 +966,7 @@ def filter_rollouts(loader,
                     a_priori[:,2] = gt_skew[:,2] - new_boxes[:,1]
                     a_priori[:,3] = gt_skew[:,3] - new_boxes[:,2]
                     bs = torch.from_numpy(box_scales).unsqueeze(1).repeat(1,4)
-                    a_priori = a_priori * 224/bs
+                    a_priori = a_priori * cs/bs
                     a_priori = a_priori.unsqueeze(1).repeat(1,n_anchors,1)
                     
                     #reg_boxes = reg_boxes.unsqueeze(0).repeat(b,1,1)
@@ -959,7 +980,7 @@ def filter_rollouts(loader,
                     
                     
                     # evaluate each box on conf
-                    alpha = 0.6
+                    alpha = 0.8
                     beta  = 0 
                     gamma = 0
                     delta = 1
@@ -993,10 +1014,10 @@ def filter_rollouts(loader,
     
                  
                  # add in original box offsets and scale outputs by original box scales
-                 detections[:,0] = detections[:,0]*box_scales/224 + new_boxes[:,1]
-                 detections[:,2] = detections[:,2]*box_scales/224 + new_boxes[:,1]
-                 detections[:,1] = detections[:,1]*box_scales/224 + new_boxes[:,2]
-                 detections[:,3] = detections[:,3]*box_scales/224 + new_boxes[:,2]
+                 detections[:,0] = detections[:,0]*box_scales/cs + new_boxes[:,1]
+                 detections[:,2] = detections[:,2]*box_scales/cs + new_boxes[:,1]
+                 detections[:,1] = detections[:,1]*box_scales/cs + new_boxes[:,2]
+                 detections[:,3] = detections[:,3]*box_scales/cs + new_boxes[:,2]
          
          
                  # convert into xysr form 
@@ -1083,8 +1104,8 @@ if __name__ == "__main__":
     try:
         loader
     except: 
-        train_im_dir  = "/home/worklab/Desktop/detrac/DETRAC-all-data"
-        train_lab_dir = "/home/worklab/Desktop/detrac/DETRAC-Train-Annotations-XML-v3"
+        train_im_dir  = "/home/worklab/Data/cv/Detrac/DETRAC-train-data"
+        train_lab_dir = "/home/worklab/Data/cv/Detrac/DETRAC-Train-Annotations-XML-v3"
         dataset = Track_Dataset(train_im_dir,train_lab_dir,n = (n_pre + n_post+1))
 
         # create training params
@@ -1108,7 +1129,7 @@ if __name__ == "__main__":
     
     fit_Q(loader,
           kf_params,
-          n_iterations = 20,
+          n_iterations = 20000,
           save_file = INIT,
           speed_init = "smooth",
           state_size = 8)    
@@ -1123,23 +1144,26 @@ if __name__ == "__main__":
     device = torch.device("cuda:0" if use_cuda else "cpu")
 
     cp = os.path.join(os.getcwd(),"config","localizer_state_dict.pt")
-    retinanet = resnet34(13)
+    cp = "cpu_detrac_localizer112_retinanet_epoch30.pt"
+    retinanet = resnet50(13)
     retinanet.load_state_dict(torch.load(cp))
     retinanet = retinanet.to(device)
     retinanet.eval()
     retinanet.training = False
     
-    
+
     vecs = fit_localizer_R(loader,
                     kf_params, 
                     device, 
                     retinanet,
-                    bers = [2.4],
+                    bers = [1],
                     save_file = INIT,
-                    n_iterations = 2,
+                    n_iterations = 200,
                     skew_ratio = 0,
                     PLOT = True,
-                    wer = 1.25)
+                    wer = 1.25,
+                    cs = 112,
+                    alpha = 0.8)
         
     
     #%%        Rollouts
@@ -1150,12 +1174,12 @@ if __name__ == "__main__":
     use_cuda = torch.cuda.is_available()
     device = torch.device("cuda:0" if use_cuda else "cpu")
 
-    cp = os.path.join(os.getcwd(),"config","localizer_state_dict.pt")
-    retinanet = resnet34(13)
-    retinanet.load_state_dict(torch.load(cp))
-    retinanet = retinanet.to(device)
-    retinanet.eval()
-    retinanet.training = False
+    # cp = os.path.join(os.getcwd(),"config","localizer_state_dict.pt")
+    # retinanet = resnet34(13)
+    # retinanet.load_state_dict(torch.load(cp))
+    # retinanet = retinanet.to(device)
+    # retinanet.eval()
+    # retinanet.training = False
     
     filter_rollouts(loader,
                     kf_params,
@@ -1167,7 +1191,8 @@ if __name__ == "__main__":
                     PLOT = True,
                     keep_nums = [1],
                     speed_init = "smooth",
-                    wer = 1.25)
+                    wer = 1.25,
+                    cs = 112)
 
 
     #%% Fit R2 for detector
@@ -1202,4 +1227,4 @@ if __name__ == "__main__":
                    device, 
                    retinanet,
                    save_file = INIT,
-                   n_iterations = 100)
+                   n_iterations = 1000)

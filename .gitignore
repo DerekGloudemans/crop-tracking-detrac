@@ -12,3 +12,9 @@ util_track/mp_loader_old.py
 *.pyc
 
 __pycache__/
+
+PR_MOTA_outputs/
+
+random_outputs/
+
+temp_outputs/

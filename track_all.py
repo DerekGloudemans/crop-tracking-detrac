@@ -27,7 +27,7 @@ from models.pytorch_retinanet_detector.retinanet.model import resnet50
 
 from util_detrac.detrac_detection_dataset import class_dict
 from util_eval import mot_eval as mot
-from tracker import Localization_Tracker
+from tracker_fsld import Localization_Tracker
 
 
 def get_track_dict(TRAIN):
@@ -65,20 +65,25 @@ if __name__ == "__main__":
      except:
          TRAIN = False
      for det_conf_cutoff in [0.8]:#[0,0.1,0.2,0.3,0.4,0.5,0.6,0.7,0.8,0.9]:
-         for det_step in [1,2,3,5,7,9,15,21,25,35,45]: 
-             
+         for det_step in [9]: 
+                
+                # # don't repeat any existing tracks
+                # save_file = os.path.join("temp_outputs","results_{}_{}.cpkl".format(id,det_step))
+                # if os.path.exists(save_file):
+                #     continue
+                
                 # parameters
                 overlap = 0.5
                 iou_cutoff = 0.75       # tracklets overlapping by this amount will be pruned
                 # det_step = 3            # frames between full detection steps
                 skip_step = 1          # frames between update steps (either detection or localization)
-                ber = 2.4               # amount by which to expand a priori tracklet to crop object
+                ber = 2.4             # amount by which to expand a priori tracklet to crop object
                 init_frames = 1         # number of detection steps in a row to perform
-                matching_cutoff = 100#0.7   # detections farther from tracklets than this will not be matched 
+                matching_cutoff = 0.7   # detections farther from tracklets than this will not be matched 
                 SHOW = False            # show tracking in progress?
                 LOCALIZE = True        # if False, will skip frames between detection steps
                 OUTVID = os.path.join(os.getcwd(),"demo","example_outputs")
-                mode = "linear"
+                mode = "iou"
                 
                 #
                 loc_cp = "./config/localizer.pt"
@@ -155,6 +160,7 @@ if __name__ == "__main__":
                 
                 # for each track and for specified det_step, track and evaluate
                 running_metrics = {}
+                count = 1
                 for id in tracks:
         
                     track_dir = track_dict[id]["frames"]
@@ -168,15 +174,15 @@ if __name__ == "__main__":
                                                    det_step = det_step,
                                                    skip_step = skip_step,
                                                    init_frames = init_frames,
-                                                   fsld_max = det_step,
+                                                   fsld_max = 4,
                                                    det_conf_cutoff = det_conf_cutoff,
                                                    matching_cutoff = matching_cutoff,
                                                    iou_cutoff = iou_cutoff,
                                                    ber = ber,
                                                    PLOT = SHOW,
-                                                   wer = 1.25,
                                                    downsample = 1,
-                                                   distance_mode = mode)
+                                                   distance_mode = mode,
+                                                   cs = 224)
                     
                     tracker.track()
                     preds, Hz, time_metrics = tracker.get_results()
@@ -189,7 +195,8 @@ if __name__ == "__main__":
                     metrics,acc = mot.evaluate_mot(preds,gts,ignored_regions,threshold = 0.3,ignore_threshold = overlap)
                     metrics = metrics.to_dict()
                     metrics["framerate"] = {0:Hz}
-                    print(metrics["mota"],metrics["framerate"])
+                    
+                    print("\r Track {} - {}: MOTA: {}  Framerate: {}".format(count,id,metrics["mota"][0],metrics["framerate"][0]))
                     
                     save_file = os.path.join("temp_outputs","results_{}_{}.cpkl".format(id,det_step))
                     with open(save_file,"wb") as f:
@@ -202,7 +209,9 @@ if __name__ == "__main__":
                     except:
                         for key in metrics:
                             running_metrics[key] = metrics[key][0]
-                            
+                    
+                    count += 1
+                        
                 # average results  
                 print("\n\nAverage Metrics for detector with {} tracks with det_step {}".format(len(tracks),det_step))
                 for key in running_metrics:

@@ -41,7 +41,7 @@ class LocMulti_Dataset(data.Dataset):
     need to partition data manually by separate directories
     """
     
-    def __init__(self, image_dir, label_dir):
+    def __init__(self, image_dir, label_dir, cs =224):
         """ initializes object
         image dir - (string) - a directory containing a subdirectory for each track sequence
         label dir - (string) - a directory containing a label file per sequence
@@ -79,7 +79,7 @@ class LocMulti_Dataset(data.Dataset):
             13:"None"
             }
         
-        
+        self.cs = cs
         self.im_tf = transforms.Compose([
                 transforms.RandomApply([
                     transforms.ColorJitter(brightness = 0.6,contrast = 0.6,saturation = 0.5)
@@ -258,18 +258,18 @@ class LocMulti_Dataset(data.Dataset):
             y[:,3] = y[:,3] - miny
 
         crop_size = im_crop.size
-        im_crop = F.resize(im_crop, (224,224))
+        im_crop = F.resize(im_crop, (self.cs,self.cs))
 
-        y[:,0] = y[:,0] * 224/crop_size[0]
-        y[:,2] = y[:,2] * 224/crop_size[0]
-        y[:,1] = y[:,1] * 224/crop_size[1]
-        y[:,3] = y[:,3] * 224/crop_size[1]
+        y[:,0] = y[:,0] * self.cs/crop_size[0]
+        y[:,2] = y[:,2] * self.cs/crop_size[0]
+        y[:,1] = y[:,1] * self.cs/crop_size[1]
+        y[:,3] = y[:,3] * self.cs/crop_size[1]
         
         # remove all labels that aren't in crop
         if torch.sum(y) != 0:
             keepers = []
             for i,item in enumerate(y):
-                if item[0] < 224-15 and item[2] > 0+15 and item[1] < 224-15 and item[3] > 0+15:
+                if item[0] < self.cs-15 and item[2] > 0+15 and item[1] < self.cs-15 and item[3] > 0+15:
                     keepers.append(i)
             y = y[keepers]
         if len(y) == 0:

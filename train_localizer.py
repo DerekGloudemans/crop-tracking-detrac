@@ -251,8 +251,8 @@ if __name__ == "__main__":
     num_classes = 13
     patience = 0
     max_epochs = 50
-    start_epoch = 5
-    checkpoint_file = "detrac_localizer_retinanet_epoch4.pt"
+    start_epoch = 0
+    checkpoint_file = None
 
     # Paths to data here
     label_dir       = "/home/worklab/Data/cv/Detrac/DETRAC-Train-Annotations-XML-v3"
@@ -281,8 +281,8 @@ if __name__ == "__main__":
         train_data
     except:
         # datasets here defined for UA Detrac Dataset
-        train_data = LocMulti_Dataset(train_partition,label_dir)
-        val_data = LocMulti_Dataset(val_partition,label_dir)
+        train_data = LocMulti_Dataset(train_partition,label_dir,cs = 112)
+        val_data = LocMulti_Dataset(val_partition,label_dir,cs = 112)
         
         params = {'batch_size' : 32,
               'shuffle'    : True,
@@ -371,7 +371,7 @@ if __name__ == "__main__":
                     print(
                         'Epoch: {} | Iteration: {} | Classification loss: {:1.5f} | Regression loss: {:1.5f} | Running loss: {:1.5f}'.format(
                             epoch_num, iter_num, float(classification_loss), float(regression_loss), np.mean(loss_hist)))
-                if iter_num % 100 == 0:
+                if iter_num % 10 == 0:
                     plot_detections(val_data, retinanet)
                 
                 
@@ -387,7 +387,7 @@ if __name__ == "__main__":
         scheduler.step(np.mean(epoch_loss))
         torch.cuda.empty_cache()
         #save checkpoint at the end of each epoch
-        PATH = "detrac_localizer_retinanet_epoch{}.pt".format(epoch_num)
+        PATH = "detrac_localizer112_retinanet_epoch{}.pt".format(epoch_num)
         torch.save(retinanet.state_dict(), PATH)
 
 
