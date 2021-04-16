@@ -50,7 +50,8 @@ class Localization_Tracker():
                  skip_step = 1,
                  downsample = 1,
                  distance_mode = "iou",
-                 cs = 224):
+                 cs = 224,
+                 device_id = 0):
         """
          Parameters
         ----------
@@ -58,7 +59,7 @@ class Localization_Tracker():
             path to directory containing ordered track images
         detector : object detector with detect function implemented that takes a frame and returns detected object
         localizer : CNN object localizer
-        kf_params : dictionaryh
+        kf_params : dictionary
             Contains the parameters to initialize kalman filters for tracking objects
         det_step : int optional
             Number of frames after which to perform full detection. The default is 1.
@@ -95,7 +96,9 @@ class Localization_Tracker():
         
         # CUDA
         use_cuda = torch.cuda.is_available()
-        self.device = torch.device("cuda:0" if use_cuda else "cpu")
+        self.device = torch.device("cuda:{}".format(device_id) if use_cuda else "cpu")
+        torch.cuda.set_device(device_id)
+        
         torch.cuda.empty_cache() 
        
         # store detector and localizer
@@ -753,9 +756,17 @@ class Localization_Tracker():
                 # bs = torch.from_numpy(box_scales).unsqueeze(1).repeat(1,4)
                 # a_priori = a_priori * 224/bs
                 a_priori = a_priori.unsqueeze(1).repeat(1,n_anchors,1)
-                
                 iou_score = self.md_iou(a_priori.double(),reg_boxes.double())
-                score = 0.8*confs + iou_score
+
+                if self.distance_mode == "iou":
+                    score = 0.8*confs + iou_score
+                
+                else:
+                    x_diff = torch.abs(a_priori[:,:,0] + a_priori[:,:,2] - (reg_boxes[:,:,0] + reg_boxes[:,:,2]) )
+                    y_diff = torch.abs(a_priori[:,:,1] + a_priori[:,:,3] - (reg_boxes[:,:,1] + reg_boxes[:,:,3]) )
+                    distance = torch.sqrt(torch.pow(x_diff,2)+torch.pow(y_diff,2))
+                    score = confs - distance/50
+                
                 best_scores ,keep = torch.max(score,dim = 1)
                 
                 idx = torch.arange(reg_boxes.shape[0])
@@ -857,7 +868,8 @@ class Localization_Tracker():
             # get speed results
             total_time = 0
             for key in self.time_metrics:
-                total_time += self.time_metrics[key]
+                if key not in ["load","plot"]:
+                    total_time += self.time_metrics[key]
             framerate = self.n_frames / total_time
 
         # get tracklet results 
@@ -872,7 +884,9 @@ class Localization_Tracker():
             
             if max_conf > 0.95 and len_track > self.fsld_max+2:
                 keep_objs.append(obj_idx)
-                
+            
+            print("\rParsing object {} of {}".format(obj_idx,len(self.all_confs.keys())), end = '\r', flush = True)
+
                             
         for frame in range(self.n_frames):
             frame_objs = []
@@ -892,6 +906,9 @@ class Localization_Tracker():
                         
                         frame_objs.append(obj_dict)
             final_output.append(frame_objs)
-        
+            
+            print("\rParsing results for frame {} of {}".format(frame,self.n_frames), end = '\r', flush = True)
+
+            
         #print("\nTotal time taken: {}s".format(self.end_time - self.start_time))
         return final_output, framerate, self.time_metrics

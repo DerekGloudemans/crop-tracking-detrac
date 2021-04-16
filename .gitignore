@@ -18,3 +18,7 @@ PR_MOTA_outputs/
 random_outputs/
 
 temp_outputs/
+
+models/py_ret_det_multigpu/images/
+
+results/

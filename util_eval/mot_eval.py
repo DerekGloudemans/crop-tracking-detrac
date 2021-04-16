@@ -330,6 +330,8 @@ def evaluate_mot(preds,gts,ignored_regions = [],threshold = 100,ignore_threshold
         # update accumulator
         acc.update(gt_ids,pred_ids,dist)
         
+        print("\rEvaluating frame {} of {}".format(frame,len(gts)), end = '\r', flush = True)
+
         
     metric_module = motmetrics.metrics.create()
     summary = metric_module.compute(acc,metrics = ["num_frames",
