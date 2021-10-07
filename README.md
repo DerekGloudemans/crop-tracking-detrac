@@ -26,5 +26,5 @@ Previous versions of this work used the name [**Localization-based tracking**](h
 
 This code was ported for simplicity from https://github.com/DerekGloudemans-oldcode/tracking-by-localization. This repository includes a ton of files used during code development, with various localizer formulations, different state formulations, and a bunch of other doodads. If you're interested in a specific functionality that this repo doesn't contain, check that code as it may well contain the function. Fair warning, it is not extensively commented. Feel free to message for more details.
 
-## Limitations
+## Limitations:
 I appologize for the somewhat unpolished nature of this repository. I'm a lone grad student working on this and several other projects in a dev-focused manner, so I don't always have time to clean und package everything as I'd really like to. If you want to reproduce or extend this work, feel free to email me and I'll do my best to respond quickly and thoroughly. And if you're a recruiter, please check out some of my slighly more polished pinned repositories!
