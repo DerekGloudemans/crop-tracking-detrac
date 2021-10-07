@@ -22,6 +22,6 @@ I broke the submodule functionality of this repo so I don't technically include 
 - Demo sequences are from UA Detrac.
 
 ## Older Code versions:
-Previous versions of this work used the name Localization-based tracking (*localization* refers to finding the location of a single object within a frame, which is roughly the task performed by the crop detector). THe term "localizer" still persists throughout this repository and can be thought to mean the same thing as "crop detector" for purposes of understanding the code and comments. 
+Previous versions of this work used the name [**Localization-based tracking**](https://arxiv.org/pdf/2104.05823.pdf)  (*localization* refers to finding the location of a single object within a frame, which is roughly the task performed by the crop detector). THe term "localizer" still persists throughout this repository and can be thought to mean the same thing as "crop detector" for purposes of understanding the code and comments. 
 
 This code was ported for simplicity from https://github.com/DerekGloudemans-oldcode/tracking-by-localization. This repository includes a ton of files used during code development, with various localizer formulations, different state formulations, and a bunch of other doodads. If you're interested in a specific functionality that this repo doesn't contain, check that code as it may well contain the function. Fair warning, it is not extensively commented. Feel free to message for more details.
