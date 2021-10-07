@@ -9,7 +9,7 @@ This repository implements a fast integrated approach to object detection and tr
 - util_detrac/ - contains pytorch datasets for loading UA Detrac data for a variety of CV tasks, such as localization, tracking , object detection.
 - util_eval/ - contains MOT evaluation code. It is not used in the demo. Examples of its use can be found in the older version of this repo (see below).
 - util_track - contains utilities used for tracking.
-- tracker.py - definition for Localization-based Tracker.
+- ***tracker.py*** - definition for Localization-based Tracker. If you want to reproduce this tracker, this is the file you'll want to use. Pretty much all of the other files are specific either to the UA Detrac Dataset or to the Retinanet (Resnet50 FPN) object detector, but the tracking framework is generally extensible.
 - demo.py - uses Localization-based Tracker to track all sequences saved within the demo/ directory.
 - train_detector.py - trains a retinanet detector on the UA Detrac dataset.
 - train_localizer.py - trains a retinanet localizer on the UA Detrac datset.
